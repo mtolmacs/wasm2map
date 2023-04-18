@@ -48,9 +48,7 @@ impl From<&str> for Error {
 
 impl From<String> for Error {
     fn from(value: String) -> Self {
-        Error {
-            msg: value,
-        }
+        Error { msg: value }
     }
 }
 

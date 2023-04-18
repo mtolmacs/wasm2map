@@ -256,9 +256,8 @@ impl WASM {
         .concat();
 
         // Write out the custom section
-        wasm.write_all(&section).map_err(|err| {
-            format!("Failed to write sourcemap section to WASM file: {}", err)
-        })?;
+        wasm.write_all(&section)
+            .map_err(|err| format!("Failed to write sourcemap section to WASM file: {}", err))?;
 
         let _s = wasm.seek(io::SeekFrom::End(0));
 
