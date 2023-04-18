@@ -122,7 +122,7 @@ impl WASM {
             &'a Cow<[u8]>,
         )
             -> gimli::EndianSlice<'a, gimli::RunTimeEndian> =
-            &|section| gimli::EndianSlice::new(&*section, gimli::RunTimeEndian::Little);
+            &|section| gimli::EndianSlice::new(section, gimli::RunTimeEndian::Little);
 
         // Create `EndianSlice`s for all of the sections.
         let dwarf = section.borrow(&borrow_section);
@@ -176,13 +176,13 @@ impl WASM {
         let mut sourcemap = String::with_capacity(self.points.len() * 4 + 100);
         let (mappings, sources) = self.generate();
 
-        sourcemap.push_str("{");
+        sourcemap.push('{');
         sourcemap.push_str(r#""version":3,"#);
         sourcemap.push_str(r#""names":[],"#);
         sourcemap.push_str(format!(r#""sources":["{}"],"#, sources.join(r#"",""#)).as_str());
         sourcemap.push_str(r#""sourcesContent":null,"#);
         sourcemap.push_str(format!(r#""mappings":"{}""#, mappings.join(",")).as_str());
-        sourcemap.push_str("}");
+        sourcemap.push('}');
 
         sourcemap
     }
@@ -369,7 +369,7 @@ impl WASM {
             let idx: usize = (32 + (x & 31)).try_into().unwrap();
             let ch: char = VLQ_CHARS[idx].into();
             result.push(ch);
-            x = x >> 5;
+            x >>= 5;
         }
         let idx: usize = x.try_into().unwrap();
         let ch: char = VLQ_CHARS[idx].into();
@@ -415,13 +415,13 @@ impl CodePoint {
             // The directory index 0 is defined to correspond to the compilation unit directory.
             if file.directory_index() != 0 {
                 if let Some(dir) = file.directory(header) {
-                    path.push(dwarf.attr_string(&unit, dir)?.to_string_lossy().as_ref());
+                    path.push(dwarf.attr_string(unit, dir)?.to_string_lossy().as_ref());
                 }
             }
 
             path.push(
                 dwarf
-                    .attr_string(&unit, file.path_name())?
+                    .attr_string(unit, file.path_name())?
                     .to_string_lossy()
                     .as_ref(),
             );
