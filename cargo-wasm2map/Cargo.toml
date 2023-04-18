@@ -1,0 +1,13 @@
+[package]
+name = "cargo-wasm2map"
+version = "0.1.0"
+edition = "2021"
+authors = ["Mark Tolmacs <mark@lazycat.hu>"]
+description = "Cargo command which generates source map for .wasm file with DWARF debug info embedded as source map."
+
+[dependencies]
+wasm2map = { version = "0.1.0", path = "../wasm2map" }
+
+[dependencies.clap]
+version = "4.2.1"
+features = ["derive"]

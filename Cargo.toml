@@ -1,0 +1,2 @@
+[workspace]
+members = ["wasm2map", "cargo-wasm2map"]

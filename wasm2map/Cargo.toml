@@ -1,0 +1,27 @@
+[package]
+name = "wasm2map"
+version = "0.1.0"
+edition = "2021"
+authors = ["Mark Tolmacs <mark@lazycat.hu>"]
+description = "Generates source map for .wasm file with DWARF debug info embedded as source map."
+
+[lib]
+
+[features]
+default = ["memmap"]
+memmap = ["dep:memmap2"]
+
+[dependencies.gimli]
+version = "0.27.2"
+features = []
+
+[dependencies.memmap2]
+version = "0.5.10"
+features = []
+optional = true
+
+[dependencies.object]
+version = "0.31.0"
+features = [
+    "wasm"
+]
