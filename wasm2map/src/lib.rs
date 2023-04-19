@@ -328,10 +328,10 @@ impl WASM {
             // (see above) in the mapping table
             let mapping = format!(
                 "{}{}{}{}",
-                WASM::vql_encode(address_delta).as_str(),
-                WASM::vql_encode(source_id_delta).as_str(),
-                WASM::vql_encode(line_delta).as_str(),
-                WASM::vql_encode(column_delta).as_str()
+                WASM::vlq_encode(address_delta).as_str(),
+                WASM::vlq_encode(source_id_delta).as_str(),
+                WASM::vlq_encode(line_delta).as_str(),
+                WASM::vlq_encode(column_delta).as_str()
             );
             mappings.push(mapping);
 
@@ -357,7 +357,7 @@ impl WASM {
     // yet another dependency to accomplish this simple task
     //
     // TODO(mtolmacs): Use smallvec instead of string
-    fn vql_encode(value: i64) -> String {
+    fn vlq_encode(value: i64) -> String {
         const VLQ_CHARS: &[u8] =
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".as_bytes();
         let mut x = if value >= 0 {
