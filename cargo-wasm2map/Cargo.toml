@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Mark Tolmacs <mark@lazycat.hu>"]
 description = "Cargo command which generates source map for .wasm file with DWARF debug info embedded as source map."
+documentation = "https://docs.rs/cargo-wasm2map"
+readme = "https://github.com/mtolmacs/wasm2map/blob/main/README.md"
+repository = "https://github.com/mtolmacs/wasm2map"
+homepage = "https://github.com/mtolmacs/wasm2map"
+keywords = ["webassembly", "wasm", "debug", "sourcemap"]
+categories = ["command-line-utilities"]
+rust-version = "1.64.0"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 wasm2map = { version = "0.1.0", path = "../wasm2map" }
@@ -11,3 +19,6 @@ wasm2map = { version = "0.1.0", path = "../wasm2map" }
 [dependencies.clap]
 version = "4.2.1"
 features = ["derive"]
+
+[badges]
+maintenance = { status = "actively-developed" }
