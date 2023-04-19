@@ -14,6 +14,8 @@ impl Display for Error {
     }
 }
 
+// Implement these From<...> traits to make
+// the library codemuch more readable
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Error {

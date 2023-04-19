@@ -11,6 +11,20 @@ const WASM_SOURCEMAPPINGURL_SECTION_NAME: &[u8] = b"sourceMappingURL";
 // TODO: Test sourcemap generation
 
 #[test]
+fn can_create_sourcemap() {
+    testutils::run_test(|out| {
+        if let Ok(mapper) = WASM::load(&out) {
+            let sourcemap = mapper.map_v3();
+
+            assert!(sourcemap.starts_with(r#"{"version":3,"names":[],"sources":["#));
+            assert!(sourcemap.ends_with(r#""}"#));
+        } else {
+            unreachable!()
+        }
+    });
+}
+
+#[test]
 fn can_add_and_update_sourcemap() {
     testutils::run_test(|out| {
         // Set up the test byte data
@@ -106,6 +120,42 @@ fn can_add_and_update_sourcemap() {
     })
 }
 
+#[test]
+fn test_error_types() {
+    fn errors() -> Result<(), Box<dyn std::error::Error>> {
+        let _error: crate::Error =
+            std::io::Error::new(std::io::ErrorKind::AddrInUse, "This is a test").into();
+
+        let dumbarray = Vec::<u8>::new();
+        let _error: crate::Error = match object::File::parse(dumbarray.as_slice()) {
+            Ok(_) => unreachable!(),
+            Err(err) => err.into(),
+        };
+
+        let _error: crate::Error = gimli::Error::Io.into();
+
+        let _error: crate::Error = "This is a test".into();
+
+        let _error: crate::Error = "This is a test".to_owned().into();
+
+        let num: Result<i32, std::num::TryFromIntError> = u32::MAX.try_into();
+        let _error: crate::Error = match num {
+            Ok(_) => unreachable!(),
+            Err(err) => err.into(),
+        };
+
+        Err(Box::from(_error))
+    }
+
+    let errors = errors();
+    assert!(errors.is_err());
+
+    let error: crate::Error = "This is a test".into();
+    assert_eq!(format!("{}", error), "This is a test");
+    
+
+}
+
 mod testutils {
     use std::{
         fs,
@@ -172,8 +222,7 @@ mod testutils {
         let mut out = get_target_dir();
         out.push("target");
         out.push("test.wasm");
-        fs::remove_file(out.as_path())
-            .expect(format!("Failed to remove the test WASM file at {}", out.display()).as_str());
+        fs::remove_file(out.as_path()).ok();
     }
 
     // Loads 'loopback' bytes from the end of the WASM binary specified by the 'path'
