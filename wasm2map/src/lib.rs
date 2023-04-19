@@ -30,7 +30,7 @@ use std::{
 
 const DWARF_CODE_SECTION_ID: usize = 10;
 
-/// Represents a code unit which can be translated to sourcemap
+/// Represents a code unit which can be translated to a sourcemap code point
 #[derive(Debug)]
 pub struct CodePoint {
     path: PathBuf,

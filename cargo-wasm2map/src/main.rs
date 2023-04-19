@@ -5,11 +5,11 @@
 //!
 //! # Usage
 //! ```
-//!  % cargo install cargo-wasm2map
-//!  % cargo build --target wasm32-unknown-unknown
-//!  % cargo wasm2map
+//! cargo install cargo-wasm2map
+//! cargo build --target wasm32-unknown-unknown
+//! cargo wasm2map target/wasm32-unknown-unknown/myproject.wasm -p -base-url http://localhost:8080
 //!
-//!  <Run the WASM in your browser...>
+//! # <Load the index.html with your WASM in your browser...>
 //! ```
 
 use clap::{Args, Parser};
