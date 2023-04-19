@@ -13,15 +13,27 @@ memmap = ["memmap2"]
 
 [dependencies.gimli]
 version = "0.27.2"
-features = []
+default-features = false
+features = ["read"]
 
 [dependencies.memmap2]
-version = "0.5.10"
-features = []
+version = "~0.5.10"
+default-features = false
 optional = true
 
 [dependencies.object]
-version = "0.31.0"
+version = "~0.31.0"
 features = [
     "wasm"
 ]
+
+[dependencies]
+# For -Zminimal-versions
+cfg-if = ">= 0.1.5"
+rand = ">= 0.3.23"
+thiserror = ">= 1.0.7"
+
+[build-dependencies]
+# For -Zminimal-versions
+gcc = ">= 0.3.4"
+
