@@ -9,6 +9,12 @@ Generates a browser-supported sourcemap for WASM binaries containing DWARF debug
 
 NOTE: Can build without unsafe code (the only unsafe code is related to using the memmap2 crate).
 
+### Before
+![Before WASM sourcemapping](https://github.com/mtolmacs/wasm2map/blob/main/before.png?raw=true)
+
+### After
+![After WASM sourcemapping](https://github.com/mtolmacs/wasm2map/blob/main/after.png?raw=true)
+
 # Usage
 
 1. Use it with Cargo to manually preprocess your WASM binary before serving:
