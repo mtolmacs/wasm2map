@@ -230,7 +230,7 @@ impl WASM {
         // Determine the file cusrsor position without the custom section (if any)
         // by subtracting the size of the sourceMappingURL section from the
         // byte size of the WASM binary
-        let pos = self.sourcemap_size.map_or(size, |length| size - length);
+        let pos = self.sourcemap_size.map(|length| size - length).unwrap_or(size);
 
         // Truncate the WASM binary and position the file cursor to the new end
         // (if there was a sourcemap added), no-op otherwise

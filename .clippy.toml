@@ -1,1 +1,7 @@
 msrv = "1.64.0"  # MSRV
+disallowed-methods = [
+    { path = "std::option::Option::map_or", reason = "use `map(..).unwrap_or(..)`" },
+    { path = "std::option::Option::map_or_else", reason = "use `map(..).unwrap_or_else(..)`" },
+    { path = "std::result::Result::map_or", reason = "use `map(..).unwrap_or(..)`" },
+    { path = "std::result::Result::map_or_else", reason = "use `map(..).unwrap_or_else(..)`" },
+]
