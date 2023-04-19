@@ -39,7 +39,6 @@ pub struct CodePoint {
     column: i64,
 }
 
-
 /// The actual DWARF to Sourcemap mapper
 ///
 /// # Usage
@@ -156,7 +155,9 @@ impl WASM {
                         // The directory index 0 is defined to correspond to the compilation unit directory.
                         if file.directory_index() != 0 {
                             if let Some(dir) = file.directory(header) {
-                                path.push(dwarf.attr_string(&unit, dir)?.to_string_lossy().as_ref());
+                                path.push(
+                                    dwarf.attr_string(&unit, dir)?.to_string_lossy().as_ref(),
+                                );
                             }
                         }
 

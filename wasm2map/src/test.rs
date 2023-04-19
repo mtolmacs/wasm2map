@@ -152,8 +152,6 @@ fn test_error_types() {
 
     let error: crate::Error = "This is a test".into();
     assert_eq!(format!("{}", error), "This is a test");
-    
-
 }
 
 mod testutils {
