@@ -58,14 +58,14 @@ impl WASM {
     pub fn load(path: impl AsRef<Path>) -> Result<Self, Error> {
         let path = path.as_ref().to_owned();
 
-        #[cfg(feature = "memmap")]
+        #[cfg(feature = "memmap2")]
         let raw = {
             // Load the WASM file into memory via mmap to speed things up
             // with large WASM files
             let file = fs::File::open(&path)?;
             unsafe { memmap2::Mmap::map(&file) }?
         };
-        #[cfg(not(feature = "memmap"))]
+        #[cfg(not(feature = "memmap2"))]
         let raw = {
             // Load the WASM file via the standard library, which can be slower
             // for larger WASM files, but some platforms might not be supported
