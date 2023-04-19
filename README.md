@@ -22,7 +22,7 @@ NOTE: Can build without unsafe code (the only unsafe code is related to using th
 # Generate sourcemap for the target WASM (replace myproject with your project
 # name).
  cargo wasm2map target/wasm32-unknown-unknown/debug/myproject.wasm \
-    -patch -base-url http://localhost:8080/myproject.wasm.map
+    -patch -base-url http://localhost:8080
 
  # Serve the WASM to your browser... (i.e. http://localhost:8080 or wherever
  # your index.html is)
