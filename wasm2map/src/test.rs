@@ -14,7 +14,7 @@ const WASM_SOURCEMAPPINGURL_SECTION_NAME: &[u8] = b"sourceMappingURL";
 fn can_create_sourcemap() {
     testutils::run_test(|out| {
         if let Ok(mapper) = WASM::load(&out) {
-            let sourcemap = mapper.map_v3();
+            let sourcemap = mapper.map_v3(false);
 
             assert!(sourcemap.starts_with(r#"{"version":3,"names":[],"sources":["#));
             assert!(sourcemap.ends_with(r#""}"#));

@@ -55,6 +55,13 @@ struct WasmFile {
         help = "Base URL of the sourcefile where it can be fetched from"
     )]
     base_url: Option<String>,
+
+    #[arg(
+        long,
+        requires = "patch",
+        help = "Bundle sourcefiles into the sourcemap"
+    )]
+    bundle_sources: bool,
 }
 
 fn main() -> Result<(), String> {
@@ -98,7 +105,7 @@ fn main() -> Result<(), String> {
     let mut wasm = WASM::load(&args.path).map_err(|err| err.to_string())?;
 
     // Generate the source map JSON for the loaded WASM
-    let sourcemap = wasm.map_v3();
+    let sourcemap = wasm.map_v3(args.bundle_sources);
 
     // Dump JSON to the map file
     fs::write(&map, sourcemap).map_err(|err| err.to_string())?;

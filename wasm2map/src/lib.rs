@@ -26,6 +26,7 @@ use std::{
     io::{self, Seek, Write},
     ops::Deref,
     path::{Path, PathBuf},
+    str,
 };
 
 const DWARF_CODE_SECTION_ID: usize = 10;
@@ -242,15 +243,22 @@ impl WASM {
     ///     }
     /// }
     /// ```
-    pub fn map_v3(&self) -> String {
+    pub fn map_v3(&self, bundle: bool) -> String {
         let mut sourcemap = String::with_capacity(self.points.len() * 4 + 100);
-        let (mappings, sources) = self.generate();
+        let (mappings, sources, contents) = self.generate(bundle);
 
         sourcemap.push('{');
         sourcemap.push_str(r#""version":3,"#);
         sourcemap.push_str(r#""names":[],"#);
         sourcemap.push_str(format!(r#""sources":["{}"],"#, sources.join(r#"",""#)).as_str());
-        sourcemap.push_str(r#""sourcesContent":null,"#);
+
+        if let Some(contents) = contents {
+            debug_assert!(bundle);
+            sourcemap.push_str(format!(r#""sourcesContent":[{}],"#, contents.join(",")).as_str());
+        } else {
+            sourcemap.push_str(r#""sourcesContent":null,"#);
+        }
+
         sourcemap.push_str(format!(r#""mappings":"{}""#, mappings.join(",")).as_str());
         sourcemap.push('}');
 
@@ -346,7 +354,10 @@ impl WASM {
     // wherever possible. So we need to encode the source file data and
     // line, column data for each WASM code segment address in the expected
     // order, so offsets make sense when resolved by the browser (or debugger)
-    fn generate<'a>(&'a self) -> (Vec<String>, Vec<String>) {
+    fn generate<'a>(
+        &'a self,
+        bundle: bool,
+    ) -> (Vec<String>, Vec<String>, Option<Vec<Cow<'static, str>>>) {
         // We collect all referenced source code files in a table and use the
         // source id (which is the value param of this HashMap) as the basis for
         // the offset when encoding position (i.e. last source id - this source id),
@@ -420,7 +431,19 @@ impl WASM {
             .filter_map(|p| Some(p.as_os_str().to_str()?.to_owned()))
             .collect::<Vec<_>>();
 
-        (mappings, source_paths)
+        let contents = bundle.then(|| {
+            source_paths
+                .iter()
+                .map(Path::new)
+                .map(|path| {
+                    fs::read_to_string(path)
+                        .map(|content| Cow::Owned(format!(r#""{}""#, Self::json_encode(&content))))
+                        .unwrap_or(Cow::Borrowed("null"))
+                })
+                .collect()
+        });
+
+        (mappings, source_paths, contents)
     }
 
     // Simple implementation of VLQ (variable-length quality) encoding to avoid
@@ -458,5 +481,87 @@ impl WASM {
         }
         result.push(n as u8);
         result
+    }
+
+    // Inspired by:
+    // <https://github.com/serde-rs/json/blob/a0ddb25ff6b86f43912f8fc637797bcbb920c61e/src/ser.rs#L1997-L2063>
+    fn json_encode(string: &str) -> Cow<'_, str> {
+        const BB: u8 = b'b'; // \x08
+        const TT: u8 = b't'; // \x09
+        const NN: u8 = b'n'; // \x0A
+        const FF: u8 = b'f'; // \x0C
+        const RR: u8 = b'r'; // \x0D
+        const QU: u8 = b'"'; // \x22
+        const BS: u8 = b'\\'; // \x5C
+        const UU: u8 = b'u'; // \x00...\x1F except the ones above
+        const __: u8 = 0;
+
+        // Lookup table of escape sequences. A value of b'x' at index i means that byte
+        // i is escaped as "\x" in JSON. A value of 0 means that byte i is not escaped.
+        static ESCAPE: [u8; 256] = [
+            //   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+            UU, UU, UU, UU, UU, UU, UU, UU, BB, TT, NN, UU, FF, RR, UU, UU, // 0
+            UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, // 1
+            __, __, QU, __, __, __, __, __, __, __, __, __, __, __, __, __, // 2
+            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 3
+            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 4
+            __, __, __, __, __, __, __, __, __, __, __, __, BS, __, __, __, // 5
+            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 6
+            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 7
+            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 8
+            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 9
+            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // A
+            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // B
+            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // C
+            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // D
+            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // E
+            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // F
+        ];
+
+        let mut start = 0;
+        let mut new_string = String::new();
+
+        for (index, byte) in string.bytes().enumerate() {
+            let escape = ESCAPE[byte as usize];
+            if escape == 0 {
+                continue;
+            }
+
+            if start < index {
+                new_string += &string[start..index];
+            }
+
+            match escape {
+                QU => new_string += r#"\""#,
+                BS => new_string += r#"\\"#,
+                BB => new_string += r#"\b"#,
+                FF => new_string += r#"\f"#,
+                NN => new_string += r#"\n"#,
+                RR => new_string += r#"\r"#,
+                TT => new_string += r#"\t"#,
+                UU => {
+                    static HEX_DIGITS: [u8; 16] = *b"0123456789abcdef";
+
+                    new_string += str::from_utf8(&[
+                        b'\\',
+                        b'u',
+                        b'0',
+                        b'0',
+                        HEX_DIGITS[(byte >> 4) as usize],
+                        HEX_DIGITS[(byte & 0xF) as usize],
+                    ])
+                    .unwrap()
+                }
+                _ => unreachable!(),
+            }
+
+            start = index + 1;
+        }
+
+        if new_string.is_empty() {
+            string.into()
+        } else {
+            new_string.into()
+        }
     }
 }
