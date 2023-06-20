@@ -1,4 +1,5 @@
 #![warn(missing_docs)]
+#![warn(clippy::use_self)]
 //! Having a sourcemap associated with your WASM file allows seeing the exact
 //! filename, the line number and character position right in the browser or
 //! supporting debugger. This can speed up tracing errors back to their source,
@@ -14,6 +15,7 @@
 //! * [WebAssembly Debugging](https://medium.com/oasislabs/webassembly-debugging-bec0aa93f8c6) by Will Scott and Oasis Labs
 
 mod error;
+mod json;
 #[cfg(test)]
 mod test;
 
@@ -60,6 +62,12 @@ pub struct WASM {
     sourcemap_size: Option<u64>,
 }
 
+struct Generated {
+    mappings: Vec<String>,
+    sources: Vec<String>,
+    contents: Option<Vec<Cow<'static, str>>>,
+}
+
 impl WASM {
     /// Loads the WASM file under 'path' into memory and parses the DWARF info
     /// If the WASM or the DWARF info in it is malformed (or non-existent)
@@ -96,7 +104,7 @@ impl WASM {
                 // b"sourceMappingURL" byte array
                 const SEGMENT_NAME_SIZE: u64 =
                     std::mem::size_of::<u8>() as u64 + b"sourceMappingURL".len() as u64;
-                let section_size_length = WASM::encode_uint_var(section.size() as u32).len() as u64;
+                let section_size_length = Self::encode_uint_var(section.size() as u32).len() as u64;
                 let section_size = CUSTOM_SEGMENT_ID_SIZE
                     + SEGMENT_NAME_SIZE
                     + section_size_length
@@ -245,7 +253,11 @@ impl WASM {
     /// ```
     pub fn map_v3(&self, bundle: bool) -> String {
         let mut sourcemap = String::with_capacity(self.points.len() * 4 + 100);
-        let (mappings, sources, contents) = self.generate(bundle);
+        let Generated {
+            mappings,
+            sources,
+            contents,
+        } = self.generate(bundle);
 
         sourcemap.push('{');
         sourcemap.push_str(r#""version":3,"#);
@@ -323,15 +335,15 @@ impl WASM {
         const WASM_CUSTOM_SECTION_ID: u32 = 0;
         let section_name = "sourceMappingURL";
         let section_content = [
-            &WASM::encode_uint_var(section_name.len() as u32)[..],
+            &Self::encode_uint_var(section_name.len() as u32)[..],
             section_name.as_bytes(),
-            &WASM::encode_uint_var(url.len() as u32)[..],
+            &Self::encode_uint_var(url.len() as u32)[..],
             url.as_bytes(),
         ]
         .concat();
         let section = [
-            &WASM::encode_uint_var(WASM_CUSTOM_SECTION_ID)[..],
-            &WASM::encode_uint_var(section_content.len() as u32)[..],
+            &Self::encode_uint_var(WASM_CUSTOM_SECTION_ID)[..],
+            &Self::encode_uint_var(section_content.len() as u32)[..],
             section_content.as_ref(),
         ]
         .concat();
@@ -354,10 +366,7 @@ impl WASM {
     // wherever possible. So we need to encode the source file data and
     // line, column data for each WASM code segment address in the expected
     // order, so offsets make sense when resolved by the browser (or debugger)
-    fn generate<'a>(
-        &'a self,
-        bundle: bool,
-    ) -> (Vec<String>, Vec<String>, Option<Vec<Cow<'static, str>>>) {
+    fn generate<'a>(&'a self, bundle: bool) -> Generated {
         // We collect all referenced source code files in a table and use the
         // source id (which is the value param of this HashMap) as the basis for
         // the offset when encoding position (i.e. last source id - this source id),
@@ -409,10 +418,10 @@ impl WASM {
             // (see above) in the mapping table
             let mapping = format!(
                 "{}{}{}{}",
-                WASM::vlq_encode(address_delta).as_str(),
-                WASM::vlq_encode(source_id_delta).as_str(),
-                WASM::vlq_encode(line_delta).as_str(),
-                WASM::vlq_encode(column_delta).as_str()
+                Self::vlq_encode(address_delta).as_str(),
+                Self::vlq_encode(source_id_delta).as_str(),
+                Self::vlq_encode(line_delta).as_str(),
+                Self::vlq_encode(column_delta).as_str()
             );
             mappings.push(mapping);
 
@@ -426,24 +435,28 @@ impl WASM {
 
         // We only need the file paths from the sources table in the order
         // they were encoded, turned to strings
-        let source_paths = sources
+        let sources = sources
             .iter()
             .filter_map(|p| Some(p.as_os_str().to_str()?.to_owned()))
             .collect::<Vec<_>>();
 
         let contents = bundle.then(|| {
-            source_paths
+            sources
                 .iter()
                 .map(Path::new)
                 .map(|path| {
                     fs::read_to_string(path)
-                        .map(|content| Cow::Owned(format!(r#""{}""#, Self::json_encode(&content))))
+                        .map(|content| Cow::Owned(format!(r#""{}""#, json::encode(&content))))
                         .unwrap_or(Cow::Borrowed("null"))
                 })
                 .collect()
         });
 
-        (mappings, source_paths, contents)
+        Generated {
+            mappings,
+            sources,
+            contents,
+        }
     }
 
     // Simple implementation of VLQ (variable-length quality) encoding to avoid
@@ -481,87 +494,5 @@ impl WASM {
         }
         result.push(n as u8);
         result
-    }
-
-    // Inspired by:
-    // <https://github.com/serde-rs/json/blob/a0ddb25ff6b86f43912f8fc637797bcbb920c61e/src/ser.rs#L1997-L2063>
-    fn json_encode(string: &str) -> Cow<'_, str> {
-        const BB: u8 = b'b'; // \x08
-        const TT: u8 = b't'; // \x09
-        const NN: u8 = b'n'; // \x0A
-        const FF: u8 = b'f'; // \x0C
-        const RR: u8 = b'r'; // \x0D
-        const QU: u8 = b'"'; // \x22
-        const BS: u8 = b'\\'; // \x5C
-        const UU: u8 = b'u'; // \x00...\x1F except the ones above
-        const __: u8 = 0;
-
-        // Lookup table of escape sequences. A value of b'x' at index i means that byte
-        // i is escaped as "\x" in JSON. A value of 0 means that byte i is not escaped.
-        static ESCAPE: [u8; 256] = [
-            //   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
-            UU, UU, UU, UU, UU, UU, UU, UU, BB, TT, NN, UU, FF, RR, UU, UU, // 0
-            UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, UU, // 1
-            __, __, QU, __, __, __, __, __, __, __, __, __, __, __, __, __, // 2
-            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 3
-            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 4
-            __, __, __, __, __, __, __, __, __, __, __, __, BS, __, __, __, // 5
-            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 6
-            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 7
-            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 8
-            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 9
-            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // A
-            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // B
-            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // C
-            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // D
-            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // E
-            __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // F
-        ];
-
-        let mut start = 0;
-        let mut new_string = String::new();
-
-        for (index, byte) in string.bytes().enumerate() {
-            let escape = ESCAPE[byte as usize];
-            if escape == 0 {
-                continue;
-            }
-
-            if start < index {
-                new_string += &string[start..index];
-            }
-
-            match escape {
-                QU => new_string += r#"\""#,
-                BS => new_string += r#"\\"#,
-                BB => new_string += r#"\b"#,
-                FF => new_string += r#"\f"#,
-                NN => new_string += r#"\n"#,
-                RR => new_string += r#"\r"#,
-                TT => new_string += r#"\t"#,
-                UU => {
-                    static HEX_DIGITS: [u8; 16] = *b"0123456789abcdef";
-
-                    new_string += str::from_utf8(&[
-                        b'\\',
-                        b'u',
-                        b'0',
-                        b'0',
-                        HEX_DIGITS[(byte >> 4) as usize],
-                        HEX_DIGITS[(byte & 0xF) as usize],
-                    ])
-                    .unwrap()
-                }
-                _ => unreachable!(),
-            }
-
-            start = index + 1;
-        }
-
-        if new_string.is_empty() {
-            string.into()
-        } else {
-            new_string.into()
-        }
     }
 }
