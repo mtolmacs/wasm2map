@@ -18,6 +18,7 @@ mod error;
 mod json;
 #[cfg(test)]
 mod test;
+mod vlq;
 
 use error::Error;
 use object::{Object, ObjectSection};
@@ -104,7 +105,7 @@ impl WASM {
                 // b"sourceMappingURL" byte array
                 const SEGMENT_NAME_SIZE: u64 =
                     std::mem::size_of::<u8>() as u64 + b"sourceMappingURL".len() as u64;
-                let section_size_length = Self::encode_uint_var(section.size() as u32).len() as u64;
+                let section_size_length = vlq::encode_uint_var(section.size() as u32).len() as u64;
                 let section_size = CUSTOM_SEGMENT_ID_SIZE
                     + SEGMENT_NAME_SIZE
                     + section_size_length
@@ -335,15 +336,15 @@ impl WASM {
         const WASM_CUSTOM_SECTION_ID: u32 = 0;
         let section_name = "sourceMappingURL";
         let section_content = [
-            &Self::encode_uint_var(section_name.len() as u32)[..],
+            &vlq::encode_uint_var(section_name.len() as u32)[..],
             section_name.as_bytes(),
-            &Self::encode_uint_var(url.len() as u32)[..],
+            &vlq::encode_uint_var(url.len() as u32)[..],
             url.as_bytes(),
         ]
         .concat();
         let section = [
-            &Self::encode_uint_var(WASM_CUSTOM_SECTION_ID)[..],
-            &Self::encode_uint_var(section_content.len() as u32)[..],
+            &vlq::encode_uint_var(WASM_CUSTOM_SECTION_ID)[..],
+            &vlq::encode_uint_var(section_content.len() as u32)[..],
             section_content.as_ref(),
         ]
         .concat();
@@ -418,10 +419,10 @@ impl WASM {
             // (see above) in the mapping table
             let mapping = format!(
                 "{}{}{}{}",
-                Self::vlq_encode(address_delta).as_str(),
-                Self::vlq_encode(source_id_delta).as_str(),
-                Self::vlq_encode(line_delta).as_str(),
-                Self::vlq_encode(column_delta).as_str()
+                vlq::encode(address_delta).as_str(),
+                vlq::encode(source_id_delta).as_str(),
+                vlq::encode(line_delta).as_str(),
+                vlq::encode(column_delta).as_str()
             );
             mappings.push(mapping);
 
@@ -457,42 +458,5 @@ impl WASM {
             sources,
             contents,
         }
-    }
-
-    // Simple implementation of VLQ (variable-length quality) encoding to avoid
-    // yet another dependency to accomplish this simple task
-    //
-    // TODO(mtolmacs): Use smallvec instead of string
-    fn vlq_encode(value: i64) -> String {
-        const VLQ_CHARS: &[u8] =
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".as_bytes();
-        let mut x = if value >= 0 {
-            value << 1
-        } else {
-            (-value << 1) + 1
-        };
-        let mut result = String::new();
-
-        while x > 31 {
-            let idx: usize = (32 + (x & 31)).try_into().unwrap();
-            let ch: char = VLQ_CHARS[idx].into();
-            result.push(ch);
-            x >>= 5;
-        }
-        let idx: usize = x.try_into().unwrap();
-        let ch: char = VLQ_CHARS[idx].into();
-        result.push(ch);
-
-        result
-    }
-
-    fn encode_uint_var(mut n: u32) -> Vec<u8> {
-        let mut result = Vec::new();
-        while n > 127 {
-            result.push((128 | (n & 127)) as u8);
-            n >>= 7;
-        }
-        result.push(n as u8);
-        result
     }
 }
