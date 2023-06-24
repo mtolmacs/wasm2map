@@ -173,6 +173,11 @@ fn test_error_types() {
 }
 
 #[test]
+fn test_numeric_encode_to_byte_sequence() {
+    assert_eq!(WASM::encode_uint_var(432), vec![176, 3])
+}
+
+#[test]
 fn test_derived_macros_present() {
     testutils::run_test(|out| {
         let codepoint = CodePoint {
