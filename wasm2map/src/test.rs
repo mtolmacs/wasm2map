@@ -1,6 +1,6 @@
 use std::{fs, ops::Deref, path::PathBuf};
 
-use crate::{CodePoint, WASM};
+use crate::{vlq, CodePoint, WASM};
 
 // Consts needed to build golden versions of the binary WASM module section.
 // See wasm2map::WASM::patch() doc-comment for details.
@@ -28,7 +28,7 @@ fn can_create_sourcemap() {
 fn relative_paths() {
     testutils::run_test(|out| {
         if let Ok(mapper) = WASM::load(&out) {
-            let sourcemap = mapper.map_v3();
+            let sourcemap = mapper.map_v3(false);
 
             // Any fixed relative path should have at least a `/` beforehand.
             #[cfg(target_os = "windows")]
@@ -199,7 +199,7 @@ fn test_error_types() {
 
 #[test]
 fn test_numeric_encode_to_byte_sequence() {
-    assert_eq!(WASM::encode_uint_var(432), vec![176, 3])
+    assert_eq!(vlq::encode_uint_var(432), vec![176, 3])
 }
 
 #[test]
