@@ -31,8 +31,18 @@ fn relative_paths() {
             let sourcemap = mapper.map_v3();
 
             // Any fixed relative path should have at least a `/` beforehand.
-            assert!(sourcemap.contains("/library/core/src/any.rs"));
-            assert!(sourcemap.contains("/library/core/src/panicking.rs"));
+            #[cfg(target_os = "windows")]
+            {
+                // TODO(mtolmacs): The slashes on Windows need to have a
+                // more robust matching method
+                assert!(sourcemap.contains(r#"\library/core/src\any.rs"#));
+                assert!(sourcemap.contains(r#"\library/core/src\panicking.rs"#));
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                assert!(sourcemap.contains("/library/core/src/any.rs"));
+                assert!(sourcemap.contains("/library/core/src/panicking.rs"));
+            }
         } else {
             unreachable!()
         }
