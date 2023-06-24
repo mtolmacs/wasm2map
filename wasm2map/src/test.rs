@@ -1,6 +1,6 @@
-use std::{fs, ops::Deref};
+use std::{fs, ops::Deref, path::PathBuf};
 
-use crate::WASM;
+use crate::{WASM, CodePoint};
 
 // Consts needed to build golden versions of the binary WASM module section.
 // See wasm2map::WASM::patch() doc-comment for details.
@@ -170,6 +170,22 @@ fn test_error_types() {
 
     let error: crate::Error = "This is a test".into();
     assert_eq!(format!("{}", error), "This is a test");
+}
+
+#[test]
+fn test_derived_macros_present() {
+    testutils::run_test(|out| {
+        let codepoint = CodePoint {
+            path: PathBuf::new(),
+            address: 0,
+            line: 0,
+            column: 0,
+        };
+        assert!(format!("{:#?}", codepoint).len() > 0);
+        let wasm = WASM::load(out)
+            .expect("Loading WASM file is unsuccessful in derived macros test");
+        assert!(format!("{:#?}", wasm).len() > 0)
+    })
 }
 
 mod testutils {
