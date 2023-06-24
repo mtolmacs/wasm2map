@@ -197,7 +197,6 @@ mod testutils {
         stdin
             .write_all(source.as_bytes())
             .expect("Failed to write test WASM to rustc input");
-        drop(stdin);
         rustc
             .wait()
             .expect("Could not compile test WASM successfully");
