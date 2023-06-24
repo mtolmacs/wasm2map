@@ -241,7 +241,7 @@ mod testutils {
     pub fn setup() -> String {
         let mut out = get_target_dir();
         out.push("target");
-        out.push("test.wasm");
+        out.push(format!("test{}.wasm", get_thread_id()));
 
         build_with_rustc("fn main() {}", out.display().to_string().as_str());
 
@@ -252,8 +252,16 @@ mod testutils {
     pub fn teardown() {
         let mut out = get_target_dir();
         out.push("target");
-        out.push("test.wasm");
+        out.push(format!("test{}.wasm", get_thread_id()));
         fs::remove_file(out.as_path()).ok();
+    }
+
+    pub fn get_thread_id() -> u64 {
+        // TODO(mtolmacs): There's an easier way on nightly, https://github.com/rust-lang/rust/issues/67939
+        let str = format!("{:#?}", std::thread::current().id());
+        let num = &str.as_str()[14..str.len() - 3];
+
+        str::parse::<u64>(num).expect("ThreadId debug format changed")
     }
 
     // Loads 'loopback' bytes from the end of the WASM binary specified by the 'path'
