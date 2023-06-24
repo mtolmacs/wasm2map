@@ -50,6 +50,20 @@ fn relative_paths() {
 }
 
 #[test]
+fn bundle() {
+    testutils::run_test(|out| {
+        if let Ok(mapper) = WASM::load(&out) {
+            let sourcemap = mapper.map_v3(true);
+            println!("{sourcemap}");
+
+            assert!(sourcemap.contains("fn main() {}"));
+        } else {
+            unreachable!()
+        }
+    });
+}
+
+#[test]
 fn can_add_and_update_sourcemap() {
     testutils::run_test(|out| {
         // Set up the test byte data
@@ -220,9 +234,7 @@ fn test_derived_macros_present() {
 
 mod testutils {
     use std::{
-        fs,
-        io::Write,
-        panic,
+        fs, panic,
         path::PathBuf,
         process::{Command, Stdio},
     };
@@ -251,16 +263,17 @@ mod testutils {
     //
     // NOTE: We also force the WASM32 target obviously, so the tests need that toolchain
     pub fn build_with_rustc(source: &'_ str, output: &'_ str) {
+        let mut file = get_target_dir();
+        file.push("target");
+        file.push(format!("test{}.rs", get_thread_id()));
+        std::fs::write(&file, source).unwrap();
+
         let mut rustc = Command::new("rustc")
-            .args(["--target", "wasm32-unknown-unknown", "-o", output, "-"])
-            .stdin(Stdio::piped())
+            .args(["--target", "wasm32-unknown-unknown", "-g", "-o", output])
+            .arg(file)
             .stdout(Stdio::piped())
             .spawn()
             .expect("Test WASM compile unsuccessful");
-        let stdin = rustc.stdin.as_mut().unwrap();
-        stdin
-            .write_all(source.as_bytes())
-            .expect("Failed to write test WASM to rustc input");
         rustc
             .wait()
             .expect("Could not compile test WASM successfully");
@@ -280,10 +293,16 @@ mod testutils {
 
     // Remove the test WASM at the end of each test case
     pub fn teardown() {
-        let mut out = get_target_dir();
-        out.push("target");
-        out.push(format!("test{}.wasm", get_thread_id()));
-        fs::remove_file(out.as_path()).ok();
+        let mut target = get_target_dir();
+        target.push("target");
+
+        let mut wasm = target.clone();
+        wasm.push(format!("test{}.wasm", get_thread_id()));
+        fs::remove_file(wasm.as_path()).ok();
+
+        let mut input = target.clone();
+        input.push(format!("test{}.rs", get_thread_id()));
+        fs::remove_file(input.as_path()).ok();
     }
 
     pub fn get_thread_id() -> u64 {
