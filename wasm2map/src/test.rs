@@ -1,6 +1,6 @@
-use std::{fs, ops::Deref};
+use std::{fs, ops::Deref, path::PathBuf};
 
-use crate::WASM;
+use crate::{CodePoint, WASM};
 
 // Consts needed to build golden versions of the binary WASM module section.
 // See wasm2map::WASM::patch() doc-comment for details.
@@ -146,6 +146,24 @@ fn can_add_and_update_sourcemap() {
 }
 
 #[test]
+fn test_path_handles_nonexistent_wasm() {
+    testutils::run_test(|out| {
+        let mapper = WASM::load(&out);
+        if let Ok(mut mapper) = mapper {
+            // Delete the WASM file to trigger error
+            fs::remove_file(&out).ok();
+
+            // Attempt to patch with the last one for sanity check
+            let result = mapper.patch("http://127.0.0.1:8080");
+
+            assert!(result.is_err())
+        } else {
+            panic!("Error loading WASM: {}", mapper.err().unwrap());
+        }
+    });
+}
+
+#[test]
 fn test_error_types() {
     fn errors() -> Result<(), Box<dyn std::error::Error>> {
         let _error: crate::Error =
@@ -177,6 +195,27 @@ fn test_error_types() {
 
     let error: crate::Error = "This is a test".into();
     assert_eq!(format!("{}", error), "This is a test");
+}
+
+#[test]
+fn test_numeric_encode_to_byte_sequence() {
+    assert_eq!(WASM::encode_uint_var(432), vec![176, 3])
+}
+
+#[test]
+fn test_derived_macros_present() {
+    testutils::run_test(|out| {
+        let codepoint = CodePoint {
+            path: PathBuf::new(),
+            address: 0,
+            line: 0,
+            column: 0,
+        };
+        assert!(format!("{:#?}", codepoint).len() > 0);
+        let wasm =
+            WASM::load(out).expect("Loading WASM file is unsuccessful in derived macros test");
+        assert!(format!("{:#?}", wasm).len() > 0)
+    })
 }
 
 mod testutils {
@@ -222,7 +261,6 @@ mod testutils {
         stdin
             .write_all(source.as_bytes())
             .expect("Failed to write test WASM to rustc input");
-        drop(stdin);
         rustc
             .wait()
             .expect("Could not compile test WASM successfully");
