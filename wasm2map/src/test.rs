@@ -1,6 +1,6 @@
 use std::{fs, ops::Deref, path::PathBuf};
 
-use crate::{WASM, CodePoint};
+use crate::{CodePoint, WASM};
 
 // Consts needed to build golden versions of the binary WASM module section.
 // See wasm2map::WASM::patch() doc-comment for details.
@@ -182,8 +182,8 @@ fn test_derived_macros_present() {
             column: 0,
         };
         assert!(format!("{:#?}", codepoint).len() > 0);
-        let wasm = WASM::load(out)
-            .expect("Loading WASM file is unsuccessful in derived macros test");
+        let wasm =
+            WASM::load(out).expect("Loading WASM file is unsuccessful in derived macros test");
         assert!(format!("{:#?}", wasm).len() > 0)
     })
 }
