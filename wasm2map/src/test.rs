@@ -121,6 +121,24 @@ fn can_add_and_update_sourcemap() {
 }
 
 #[test]
+fn test_path_handles_nonexistent_wasm() {
+    testutils::run_test(|out| {
+        let mapper = WASM::load(&out);
+        if let Ok(mut mapper) = mapper {
+            // Delete the WASM file to trigger error
+            fs::remove_file(&out).ok();
+
+            // Attempt to patch with the last one for sanity check
+            let result = mapper.patch("http://127.0.0.1:8080");
+
+            assert!(result.is_err())
+        } else {
+            panic!("Error loading WASM: {}", mapper.err().unwrap());
+        }
+    });
+}
+
+#[test]
 fn test_error_types() {
     fn errors() -> Result<(), Box<dyn std::error::Error>> {
         let _error: crate::Error =
