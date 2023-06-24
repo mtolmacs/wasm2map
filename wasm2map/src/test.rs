@@ -25,6 +25,31 @@ fn can_create_sourcemap() {
 }
 
 #[test]
+fn relative_paths() {
+    testutils::run_test(|out| {
+        if let Ok(mapper) = WASM::load(&out) {
+            let sourcemap = mapper.map_v3();
+
+            // Any fixed relative path should have at least a `/` beforehand.
+            #[cfg(target_os = "windows")]
+            {
+                // TODO(mtolmacs): The slashes on Windows need to have a
+                // more robust matching method
+                assert!(sourcemap.contains(r#"\library/core/src\any.rs"#));
+                assert!(sourcemap.contains(r#"\library/core/src\panicking.rs"#));
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                assert!(sourcemap.contains("/library/core/src/any.rs"));
+                assert!(sourcemap.contains("/library/core/src/panicking.rs"));
+            }
+        } else {
+            unreachable!()
+        }
+    });
+}
+
+#[test]
 fn can_add_and_update_sourcemap() {
     testutils::run_test(|out| {
         // Set up the test byte data

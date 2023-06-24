@@ -152,13 +152,18 @@ impl WASM {
                     let mut path = PathBuf::new();
 
                     if let Some(file) = row.file(header) {
-                        // The directory index 0 is defined to correspond to the compilation unit directory.
-                        if file.directory_index() != 0 {
-                            if let Some(dir) = file.directory(header) {
-                                path.push(
-                                    dwarf.attr_string(&unit, dir)?.to_string_lossy().as_ref(),
-                                );
+                        if let Some(dir) = file.directory(header) {
+                            let dir = &dwarf.attr_string(&unit, dir)?.to_string_lossy();
+                            let dir = Path::new(dir.as_ref());
+
+                            // Relative directories are relative to the compilation unit directory.
+                            if dir.is_relative() {
+                                if let Some(dir) = unit.comp_dir {
+                                    path.push(dir.to_string_lossy().as_ref())
+                                }
                             }
+
+                            path.push(dir);
                         }
 
                         path.push(
