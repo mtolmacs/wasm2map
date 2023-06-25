@@ -25,7 +25,7 @@ fn can_create_sourcemap() {
 }
 
 #[test]
-fn relative_paths() {
+fn relative_paths_are_considered() {
     testutils::run_test(|out| {
         if let Ok(mapper) = WASM::load(&out) {
             let sourcemap = mapper.map_v3(false);
@@ -50,7 +50,7 @@ fn relative_paths() {
 }
 
 #[test]
-fn bundle() {
+fn can_bundle_source() {
     testutils::run_test(|out| {
         if let Ok(mapper) = WASM::load(&out) {
             let sourcemap = mapper.map_v3(true);
