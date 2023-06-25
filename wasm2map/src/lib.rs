@@ -233,7 +233,14 @@ impl WASM {
         })
     }
 
-    /// Generate the sourcemap v3 JSON from the parsed WASM DWARF data
+    /// Generate the sourcemap v3 JSON from the parsed WASM DWARF data.
+    ///
+    /// The `bundle` parameter, when set to true, bundles the source code
+    /// of your project in the source map, so you can jump to the source
+    /// code from the console, not just the raw WASM bytecode.
+    ///
+    /// Note: The mapper is currently not able to package the source code
+    /// of crate dependencies, nor the rust library sources.
     ///
     /// # Example output
     ///
@@ -246,7 +253,14 @@ impl WASM {
     ///         "another/file/path.rs"
     ///         ...
     ///     ],
-    ///     "sourcesContent": null,
+    ///     "sourcesContent": [
+    ///         null,
+    ///         null,
+    ///         null,
+    ///         "fn main() {}",
+    ///         null,
+    ///         ...
+    ///     ],
     ///     "mappings": {
     ///         "yjBAiIA,qCAIiB,QAMhB,...,oBAAA"
     ///     }
