@@ -1,4 +1,5 @@
 #![warn(missing_docs)]
+#![warn(clippy::use_self)]
 //! Having a sourcemap associated with your WASM file allows seeing the exact
 //! filename, the line number and character position right in the browser or
 //! supporting debugger. This can speed up tracing errors back to their source,
@@ -14,8 +15,10 @@
 //! * [WebAssembly Debugging](https://medium.com/oasislabs/webassembly-debugging-bec0aa93f8c6) by Will Scott and Oasis Labs
 
 mod error;
+mod json;
 #[cfg(test)]
 mod test;
+mod vlq;
 
 use error::Error;
 use object::{Object, ObjectSection};
@@ -26,6 +29,7 @@ use std::{
     io::{self, Seek, Write},
     ops::Deref,
     path::{Path, PathBuf},
+    str,
 };
 
 const DWARF_CODE_SECTION_ID: usize = 10;
@@ -48,7 +52,7 @@ pub struct CodePoint {
 ///
 /// let mapper = WASM::load("/path/to/the/file.wasm");
 /// if let Ok(mut mapper) = mapper {
-///     let sourcemap = mapper.map_v3();
+///     let sourcemap = mapper.map_v3(false);
 ///     mapper.patch("http://localhost:8080").expect("Failed to patch");
 /// }
 /// ```
@@ -57,6 +61,12 @@ pub struct WASM {
     path: PathBuf,
     points: BTreeMap<i64, CodePoint>,
     sourcemap_size: Option<u64>,
+}
+
+struct Generated {
+    mappings: Vec<String>,
+    sources: Vec<String>,
+    contents: Option<Vec<Cow<'static, str>>>,
 }
 
 impl WASM {
@@ -95,7 +105,7 @@ impl WASM {
                 // b"sourceMappingURL" byte array
                 const SEGMENT_NAME_SIZE: u64 =
                     std::mem::size_of::<u8>() as u64 + b"sourceMappingURL".len() as u64;
-                let section_size_length = WASM::encode_uint_var(section.size() as u32).len() as u64;
+                let section_size_length = vlq::encode_uint_var(section.size() as u32).len() as u64;
                 let section_size = CUSTOM_SEGMENT_ID_SIZE
                     + SEGMENT_NAME_SIZE
                     + section_size_length
@@ -223,7 +233,14 @@ impl WASM {
         })
     }
 
-    /// Generate the sourcemap v3 JSON from the parsed WASM DWARF data
+    /// Generate the sourcemap v3 JSON from the parsed WASM DWARF data.
+    ///
+    /// The `bundle` parameter, when set to true, bundles the source code
+    /// of your project in the source map, so you can jump to the source
+    /// code from the console, not just the raw WASM bytecode.
+    ///
+    /// Note: The mapper is currently not able to package the source code
+    /// of crate dependencies, nor the rust library sources.
     ///
     /// # Example output
     ///
@@ -236,21 +253,39 @@ impl WASM {
     ///         "another/file/path.rs"
     ///         ...
     ///     ],
-    ///     "sourcesContent": null,
+    ///     "sourcesContent": [
+    ///         null,
+    ///         null,
+    ///         null,
+    ///         "fn main() {}",
+    ///         null,
+    ///         ...
+    ///     ],
     ///     "mappings": {
     ///         "yjBAiIA,qCAIiB,QAMhB,...,oBAAA"
     ///     }
     /// }
     /// ```
-    pub fn map_v3(&self) -> String {
+    pub fn map_v3(&self, bundle: bool) -> String {
         let mut sourcemap = String::with_capacity(self.points.len() * 4 + 100);
-        let (mappings, sources) = self.generate();
+        let Generated {
+            mappings,
+            sources,
+            contents,
+        } = self.generate(bundle);
 
         sourcemap.push('{');
         sourcemap.push_str(r#""version":3,"#);
         sourcemap.push_str(r#""names":[],"#);
         sourcemap.push_str(format!(r#""sources":["{}"],"#, sources.join(r#"",""#)).as_str());
-        sourcemap.push_str(r#""sourcesContent":null,"#);
+
+        if let Some(contents) = contents {
+            debug_assert!(bundle);
+            sourcemap.push_str(format!(r#""sourcesContent":[{}],"#, contents.join(",")).as_str());
+        } else {
+            sourcemap.push_str(r#""sourcesContent":null,"#);
+        }
+
         sourcemap.push_str(format!(r#""mappings":"{}""#, mappings.join(",")).as_str());
         sourcemap.push('}');
 
@@ -315,15 +350,15 @@ impl WASM {
         const WASM_CUSTOM_SECTION_ID: u32 = 0;
         let section_name = "sourceMappingURL";
         let section_content = [
-            &WASM::encode_uint_var(section_name.len() as u32)[..],
+            &vlq::encode_uint_var(section_name.len() as u32)[..],
             section_name.as_bytes(),
-            &WASM::encode_uint_var(url.len() as u32)[..],
+            &vlq::encode_uint_var(url.len() as u32)[..],
             url.as_bytes(),
         ]
         .concat();
         let section = [
-            &WASM::encode_uint_var(WASM_CUSTOM_SECTION_ID)[..],
-            &WASM::encode_uint_var(section_content.len() as u32)[..],
+            &vlq::encode_uint_var(WASM_CUSTOM_SECTION_ID)[..],
+            &vlq::encode_uint_var(section_content.len() as u32)[..],
             section_content.as_ref(),
         ]
         .concat();
@@ -346,7 +381,7 @@ impl WASM {
     // wherever possible. So we need to encode the source file data and
     // line, column data for each WASM code segment address in the expected
     // order, so offsets make sense when resolved by the browser (or debugger)
-    fn generate<'a>(&'a self) -> (Vec<String>, Vec<String>) {
+    fn generate<'a>(&'a self, bundle: bool) -> Generated {
         // We collect all referenced source code files in a table and use the
         // source id (which is the value param of this HashMap) as the basis for
         // the offset when encoding position (i.e. last source id - this source id),
@@ -398,10 +433,10 @@ impl WASM {
             // (see above) in the mapping table
             let mapping = format!(
                 "{}{}{}{}",
-                WASM::vlq_encode(address_delta).as_str(),
-                WASM::vlq_encode(source_id_delta).as_str(),
-                WASM::vlq_encode(line_delta).as_str(),
-                WASM::vlq_encode(column_delta).as_str()
+                vlq::encode(address_delta).as_str(),
+                vlq::encode(source_id_delta).as_str(),
+                vlq::encode(line_delta).as_str(),
+                vlq::encode(column_delta).as_str()
             );
             mappings.push(mapping);
 
@@ -415,48 +450,27 @@ impl WASM {
 
         // We only need the file paths from the sources table in the order
         // they were encoded, turned to strings
-        let source_paths = sources
+        let sources = sources
             .iter()
             .filter_map(|p| Some(p.as_os_str().to_str()?.to_owned()))
             .collect::<Vec<_>>();
 
-        (mappings, source_paths)
-    }
+        let contents = bundle.then(|| {
+            sources
+                .iter()
+                .map(Path::new)
+                .map(|path| {
+                    fs::read_to_string(path)
+                        .map(|content| Cow::Owned(format!(r#""{}""#, json::encode(&content))))
+                        .unwrap_or(Cow::Borrowed("null"))
+                })
+                .collect()
+        });
 
-    // Simple implementation of VLQ (variable-length quality) encoding to avoid
-    // yet another dependency to accomplish this simple task
-    //
-    // TODO(mtolmacs): Use smallvec instead of string
-    fn vlq_encode(value: i64) -> String {
-        const VLQ_CHARS: &[u8] =
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".as_bytes();
-        let mut x = if value >= 0 {
-            value << 1
-        } else {
-            (-value << 1) + 1
-        };
-        let mut result = String::new();
-
-        while x > 31 {
-            let idx: usize = (32 + (x & 31)).try_into().unwrap();
-            let ch: char = VLQ_CHARS[idx].into();
-            result.push(ch);
-            x >>= 5;
+        Generated {
+            mappings,
+            sources,
+            contents,
         }
-        let idx: usize = x.try_into().unwrap();
-        let ch: char = VLQ_CHARS[idx].into();
-        result.push(ch);
-
-        result
-    }
-
-    fn encode_uint_var(mut n: u32) -> Vec<u8> {
-        let mut result = Vec::new();
-        while n > 127 {
-            result.push((128 | (n & 127)) as u8);
-            n >>= 7;
-        }
-        result.push(n as u8);
-        result
     }
 }

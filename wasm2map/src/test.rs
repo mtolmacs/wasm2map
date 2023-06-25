@@ -1,6 +1,6 @@
 use std::{fs, ops::Deref, path::PathBuf};
 
-use crate::{CodePoint, WASM};
+use crate::{error::Error, json::encode, vlq, CodePoint, WASM};
 
 // Consts needed to build golden versions of the binary WASM module section.
 // See wasm2map::WASM::patch() doc-comment for details.
@@ -14,7 +14,7 @@ const WASM_SOURCEMAPPINGURL_SECTION_NAME: &[u8] = b"sourceMappingURL";
 fn can_create_sourcemap() {
     testutils::run_test(|out| {
         if let Ok(mapper) = WASM::load(&out) {
-            let sourcemap = mapper.map_v3();
+            let sourcemap = mapper.map_v3(false);
 
             assert!(sourcemap.starts_with(r#"{"version":3,"names":[],"sources":["#));
             assert!(sourcemap.ends_with(r#""}"#));
@@ -25,10 +25,10 @@ fn can_create_sourcemap() {
 }
 
 #[test]
-fn relative_paths() {
+fn relative_paths_are_considered() {
     testutils::run_test(|out| {
         if let Ok(mapper) = WASM::load(&out) {
-            let sourcemap = mapper.map_v3();
+            let sourcemap = mapper.map_v3(false);
 
             // Any fixed relative path should have at least a `/` beforehand.
             #[cfg(target_os = "windows")]
@@ -43,6 +43,18 @@ fn relative_paths() {
                 assert!(sourcemap.contains("/library/core/src/any.rs"));
                 assert!(sourcemap.contains("/library/core/src/panicking.rs"));
             }
+        } else {
+            unreachable!()
+        }
+    });
+}
+
+#[test]
+fn can_bundle_source() {
+    testutils::run_test(|out| {
+        if let Ok(mapper) = WASM::load(&out) {
+            let sourcemap = mapper.map_v3(true);
+            assert!(sourcemap.contains("fn main() {}"));
         } else {
             unreachable!()
         }
@@ -199,7 +211,7 @@ fn test_error_types() {
 
 #[test]
 fn test_numeric_encode_to_byte_sequence() {
-    assert_eq!(WASM::encode_uint_var(432), vec![176, 3])
+    assert_eq!(vlq::encode_uint_var(432), vec![176, 3])
 }
 
 #[test]
@@ -214,15 +226,33 @@ fn test_derived_macros_present() {
         assert!(format!("{:#?}", codepoint).len() > 0);
         let wasm =
             WASM::load(out).expect("Loading WASM file is unsuccessful in derived macros test");
-        assert!(format!("{:#?}", wasm).len() > 0)
+        assert!(format!("{:#?}", wasm).len() > 0);
+        let error = Error::from("");
+        assert!(format!("{:#?}", error).len() > 0);
     })
+}
+
+#[test]
+fn test_json_encode() {
+    let buf = [0; 32]
+        .iter()
+        .enumerate()
+        .map(|(count, _)| u8::try_from(count).expect("Data buffer is longer than 32"))
+        .collect::<Vec<u8>>();
+    assert_eq!(
+        encode(std::str::from_utf8(buf.as_slice()).expect("Wrong test buffer data")),
+        r#"\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f"#
+    );
+    let buf2 = &[36, 35, 34, 92, 93, 94];
+    assert_eq!(
+        encode(std::str::from_utf8(buf2.as_slice()).expect("Wrong second test buffer data")),
+        r#"$#\"\\"#
+    );
 }
 
 mod testutils {
     use std::{
-        fs,
-        io::Write,
-        panic,
+        fs, panic,
         path::PathBuf,
         process::{Command, Stdio},
     };
@@ -251,16 +281,17 @@ mod testutils {
     //
     // NOTE: We also force the WASM32 target obviously, so the tests need that toolchain
     pub fn build_with_rustc(source: &'_ str, output: &'_ str) {
+        let mut file = get_target_dir();
+        file.push("target");
+        file.push(format!("test{}.rs", get_thread_id()));
+        std::fs::write(&file, source).unwrap();
+
         let mut rustc = Command::new("rustc")
-            .args(["--target", "wasm32-unknown-unknown", "-o", output, "-"])
-            .stdin(Stdio::piped())
+            .args(["--target", "wasm32-unknown-unknown", "-g", "-o", output])
+            .arg(file)
             .stdout(Stdio::piped())
             .spawn()
             .expect("Test WASM compile unsuccessful");
-        let stdin = rustc.stdin.as_mut().unwrap();
-        stdin
-            .write_all(source.as_bytes())
-            .expect("Failed to write test WASM to rustc input");
         rustc
             .wait()
             .expect("Could not compile test WASM successfully");
@@ -280,10 +311,16 @@ mod testutils {
 
     // Remove the test WASM at the end of each test case
     pub fn teardown() {
-        let mut out = get_target_dir();
-        out.push("target");
-        out.push(format!("test{}.wasm", get_thread_id()));
-        fs::remove_file(out.as_path()).ok();
+        let mut target = get_target_dir();
+        target.push("target");
+
+        let mut wasm = target.clone();
+        wasm.push(format!("test{}.wasm", get_thread_id()));
+        fs::remove_file(wasm.as_path()).ok();
+
+        let mut input = target.clone();
+        input.push(format!("test{}.rs", get_thread_id()));
+        fs::remove_file(input.as_path()).ok();
     }
 
     pub fn get_thread_id() -> u64 {

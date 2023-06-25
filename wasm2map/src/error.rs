@@ -18,7 +18,7 @@ impl Display for Error {
 // the library codemuch more readable
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
-        Error {
+        Self {
             msg: value.to_string(),
         }
     }
@@ -26,7 +26,7 @@ impl From<std::io::Error> for Error {
 
 impl From<object::Error> for Error {
     fn from(value: object::Error) -> Self {
-        Error {
+        Self {
             msg: value.to_string(),
         }
     }
@@ -34,7 +34,7 @@ impl From<object::Error> for Error {
 
 impl From<gimli::Error> for Error {
     fn from(value: gimli::Error) -> Self {
-        Error {
+        Self {
             msg: value.to_string(),
         }
     }
@@ -42,7 +42,7 @@ impl From<gimli::Error> for Error {
 
 impl From<&str> for Error {
     fn from(value: &str) -> Self {
-        Error {
+        Self {
             msg: value.to_owned(),
         }
     }
@@ -50,13 +50,13 @@ impl From<&str> for Error {
 
 impl From<String> for Error {
     fn from(value: String) -> Self {
-        Error { msg: value }
+        Self { msg: value }
     }
 }
 
 impl From<std::num::TryFromIntError> for Error {
     fn from(value: std::num::TryFromIntError) -> Self {
-        Error {
+        Self {
             msg: value.to_string(),
         }
     }

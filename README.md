@@ -41,7 +41,7 @@ use wasm2map::WASM;
 
 let mapper = WASM::load("/path/to/the/file.wasm");
     if let Ok(mut mapper) = mapper {
-        let sourcemap = mapper.map_v3();
+        let sourcemap = mapper.map_v3(false);
         mapper.patch("http://localhost:8080").expect("Failed to patch");
 }
 ```
