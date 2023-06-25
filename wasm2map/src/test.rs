@@ -226,7 +226,9 @@ fn test_derived_macros_present() {
         assert!(format!("{:#?}", codepoint).len() > 0);
         let wasm =
             WASM::load(out).expect("Loading WASM file is unsuccessful in derived macros test");
-        assert!(format!("{:#?}", wasm).len() > 0)
+        assert!(format!("{:#?}", wasm).len() > 0);
+        let error = Error::from("");
+        assert!(format!("{:#?}", error).len() > 0);
     })
 }
 
