@@ -1,6 +1,6 @@
 use std::{fs, ops::Deref, path::PathBuf};
 
-use crate::{vlq, CodePoint, WASM};
+use crate::{error::Error, json::encode, vlq, CodePoint, WASM};
 
 // Consts needed to build golden versions of the binary WASM module section.
 // See wasm2map::WASM::patch() doc-comment for details.
@@ -230,6 +230,24 @@ fn test_derived_macros_present() {
         let error = Error::from("");
         assert!(format!("{:#?}", error).len() > 0);
     })
+}
+
+#[test]
+fn test_json_encode() {
+    let buf = [0; 32]
+        .iter()
+        .enumerate()
+        .map(|(count, _)| u8::try_from(count).expect("Data buffer is longer than 32"))
+        .collect::<Vec<u8>>();
+    assert_eq!(
+        encode(std::str::from_utf8(buf.as_slice()).expect("Wrong test buffer data")),
+        r#"\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f"#
+    );
+    let buf2 = &[36, 35, 34, 92, 93, 94];
+    assert_eq!(
+        encode(std::str::from_utf8(buf2.as_slice()).expect("Wrong second test buffer data")),
+        r#"$#\"\\"#
+    );
 }
 
 mod testutils {
