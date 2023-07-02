@@ -39,6 +39,7 @@ features = [
 cfg-if = ">= 0.1.5"
 rand = ">= 0.3.23"
 thiserror = ">= 1.0.7"
+flate2 = ">= 1.0.26"
 
 [build-dependencies]
 # For -Zminimal-versions
