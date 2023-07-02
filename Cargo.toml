@@ -1,2 +1,3 @@
 [workspace]
+resolver = "2"
 members = ["wasm2map", "cargo-wasm2map"]
