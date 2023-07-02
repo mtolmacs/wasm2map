@@ -13,7 +13,7 @@ const WASM_SOURCEMAPPINGURL_SECTION_NAME: &[u8] = b"sourceMappingURL";
 #[test]
 fn can_create_sourcemap() {
     testutils::run_test(|out| {
-        if let Ok(mapper) = WASM::load(&out) {
+        if let Ok(mapper) = WASM::load(out) {
             let sourcemap = mapper.map_v3(false);
 
             assert!(sourcemap.starts_with(r#"{"version":3,"names":[],"sources":["#));
@@ -27,7 +27,7 @@ fn can_create_sourcemap() {
 #[test]
 fn relative_paths_are_considered() {
     testutils::run_test(|out| {
-        if let Ok(mapper) = WASM::load(&out) {
+        if let Ok(mapper) = WASM::load(out) {
             let sourcemap = mapper.map_v3(false);
 
             // Any fixed relative path should have at least a `/` beforehand.
@@ -52,7 +52,7 @@ fn relative_paths_are_considered() {
 #[test]
 fn can_bundle_source() {
     testutils::run_test(|out| {
-        if let Ok(mapper) = WASM::load(&out) {
+        if let Ok(mapper) = WASM::load(out) {
             let sourcemap = mapper.map_v3(true);
             assert!(sourcemap.contains("fn main() {}"));
         } else {
@@ -65,7 +65,7 @@ fn can_bundle_source() {
 fn can_add_and_update_sourcemap() {
     testutils::run_test(|out| {
         // Set up the test byte data
-        const URL: &'static str = "http://localhost:8080";
+        const URL: &str = "http://localhost:8080";
         let content = [
             &[WASM_SOURCEMAPPINGURL_SECTION_NAME.len() as u8],
             WASM_SOURCEMAPPINGURL_SECTION_NAME,
@@ -79,7 +79,7 @@ fn can_add_and_update_sourcemap() {
             content.as_ref(),
         ]
         .concat();
-        const URL2: &'static str = "http://127.0.0.1:8080";
+        const URL2: &str = "http://127.0.0.1:8080";
         let content2 = [
             &[WASM_SOURCEMAPPINGURL_SECTION_NAME.len() as u8],
             WASM_SOURCEMAPPINGURL_SECTION_NAME,
@@ -223,12 +223,12 @@ fn test_derived_macros_present() {
             line: 0,
             column: 0,
         };
-        assert!(format!("{:#?}", codepoint).len() > 0);
+        assert!(!format!("{:#?}", codepoint).is_empty());
         let wasm =
             WASM::load(out).expect("Loading WASM file is unsuccessful in derived macros test");
-        assert!(format!("{:#?}", wasm).len() > 0);
+        assert!(!format!("{:#?}", wasm).is_empty());
         let error = Error::from("");
-        assert!(format!("{:#?}", error).len() > 0);
+        assert!(!format!("{:#?}", error).is_empty());
     })
 }
 
@@ -339,9 +339,9 @@ mod testutils {
     }
 
     // Run a test with setup and teardown for the test case
-    pub fn run_test<T>(test: T) -> ()
+    pub fn run_test<T>(test: T)
     where
-        T: FnOnce(String) -> () + panic::UnwindSafe,
+        T: FnOnce(String) + panic::UnwindSafe,
     {
         let out = setup();
         let result = panic::catch_unwind(|| test(out));
