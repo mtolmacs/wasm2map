@@ -22,6 +22,7 @@ mod vlq;
 
 use error::Error;
 use object::{Object, ObjectSection};
+use rustc_demangle::demangle;
 use std::{
     borrow::Cow,
     collections::BTreeMap,
@@ -152,6 +153,59 @@ impl WASM {
         let mut iter = dwarf.units();
         while let Some(header) = iter.next()? {
             let unit = dwarf.unit(header)?;
+
+            // let mut depth = 0;
+            // let mut entries = unit.entries();
+            // while let Some((delta_depth, entry)) = entries.next_dfs()? {
+            //     depth += delta_depth;
+            //     println!("<{}><{:x}> {}", depth, entry.offset().0, entry.tag());
+
+            //     // Iterate over the attributes in the DIE.
+            //     let mut attrs = entry.attrs();
+            //     while let Some(attr) = attrs.next()? {
+            //         match attr.value() {
+            //             gimli::AttributeValue::DebugStrRef(offset) => {
+            //                 if let Ok(slice) = dwarf.debug_str.get_str(offset) {
+            //                     println!("   {}: {:?}", attr.name(), slice.to_string_lossy());
+            //                 } else {
+            //                     println!("   {}: {:?}", attr.name(), attr.value());
+            //                 }
+            //             }
+            //             _ => println!("   {}: {:?}", attr.name(), attr.value()),
+            //         }
+            //     }
+            // }
+
+            let mut depth = 0;
+            let mut entries = unit.entries();
+            while let Some((delta_depth, entry)) = entries.next_dfs()? {
+                depth += delta_depth;
+
+                let tag_string = entry.tag().to_string();
+                if tag_string == "DW_TAG_subprogram" || tag_string == "DW_TAG_inline_subroutine" {
+                    println!("<{}><{:x}> {}", depth, entry.offset().0, entry.tag());
+                    // Iterate over the attributes in the DIE.
+                    let mut attrs = entry.attrs();
+                    while let Some(attr) = attrs.next()? {
+                        let val = attr.name().to_string();
+                        if val == "DW_AT_linkage_name"
+                            || val == "DW_AT_decl_line"
+                            || val == "DW_AT_decl_file"
+                            || val == "DW_AT_name"
+                        {
+                            if let gimli::AttributeValue::DebugStrRef(offset) = attr.value() {
+                                if let Ok(slice) = dwarf.debug_str.get_str(offset) {
+                                    let val = slice.to_string_lossy().to_string();
+                                    println!("   {}: {:?}", attr.name(), demangle(val.as_str()));
+                                }
+                            } else {
+                                println!("   {}: {:?}", attr.name(), attr.value());
+                            }
+                        }
+                    }
+                    println!("------------")
+                }
+            }
 
             // Get the line program for the compilation unit.
             if let Some(program) = unit.line_program.clone() {

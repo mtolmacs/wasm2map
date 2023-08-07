@@ -54,6 +54,7 @@ fn can_bundle_source() {
     testutils::run_test(|out| {
         if let Ok(mapper) = WASM::load(out) {
             let sourcemap = mapper.map_v3(true);
+            fs::write("sourcemap.json", &sourcemap).expect("FAILED to write file");
             assert!(sourcemap.contains("fn main() {}"));
         } else {
             unreachable!()
