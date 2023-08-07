@@ -163,11 +163,14 @@ impl WASM {
 
                     if let Some(file) = row.file(header) {
                         if let Some(dir) = file.directory(header) {
-                            let dir = &dwarf.attr_string(&unit, dir)?.to_string_lossy();
-                            let dir = Path::new(dir.as_ref());
+                            let dir: PathBuf = dwarf
+                                .attr_string(&unit, dir)?
+                                .to_string_lossy()
+                                .as_ref()
+                                .into();
 
                             // Relative directories are relative to the compilation unit directory.
-                            if dir.is_relative() {
+                            if dir.as_path().is_relative() {
                                 if let Some(dir) = unit.comp_dir {
                                     path.push(dir.to_string_lossy().as_ref())
                                 }
@@ -176,12 +179,15 @@ impl WASM {
                             path.push(dir);
                         }
 
-                        path.push(
-                            dwarf
-                                .attr_string(&unit, file.path_name())?
-                                .to_string_lossy()
-                                .as_ref(),
-                        );
+                        let relative: String = dwarf
+                            .attr_string(&unit, file.path_name())?
+                            .to_string_lossy()
+                            .into();
+                        path.push(relative);
+                        path = match path.to_str() {
+                            Some(t) => t.replace('\\', "/").into(),
+                            None => path,
+                        };
                     }
 
                     // The address of the instruction in the code section
