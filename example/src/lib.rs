@@ -15,9 +15,9 @@ pub fn error(s: &str) {
 
 #[no_mangle]
 pub extern "C" fn start() {
-    std::panic::set_hook(Box::new(|panic_info| {
+    std::panic::set_hook(Box::new(|info: &std::panic::PanicInfo| {
         let loc_string;
-        if let Some(location) = panic_info.location() {
+        if let Some(location) = info.location() {
             loc_string = format!(
                 "({}:{}:{})",
                 std::path::Path::new(location.file())
@@ -33,9 +33,9 @@ pub extern "C" fn start() {
         }
 
         let error_message;
-        if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+        if let Some(s) = info.payload().downcast_ref::<&str>() {
             error_message = format!("Panic occurred: {:?} at {}\n\n", s, loc_string);
-        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
             error_message = format!("Panic occurred: {:?} at {}\n\n", s, loc_string);
         } else {
             error_message = format!("Unknown panic occurred at {}\n\n", loc_string);
@@ -44,5 +44,5 @@ pub extern "C" fn start() {
         error(&error_message);
     }));
 
-    panic!()
+    panic!("EXAMPLE PANIC")
 }

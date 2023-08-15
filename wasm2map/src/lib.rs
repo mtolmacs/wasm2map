@@ -341,7 +341,6 @@ impl WASM {
             }
         }
         sourcemap.push_str(r#""sourceRoot":"","#);
-        sourcemap.push_str(r#""names":[],"#);
         let s: Vec<String> = sources
             .into_iter()
             .map(|source| {
@@ -354,6 +353,7 @@ impl WASM {
             //.map(|source| source.rsplit('/').next().expect("NO FILENAME").to_string())
             .collect();
         sourcemap.push_str(format!(r#""sources":["{}"],"#, s.join(r#"",""#)).as_str());
+        sourcemap.push_str(r#""names":[],"#);
 
         if let Some(contents) = contents {
             debug_assert!(bundle);
