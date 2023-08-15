@@ -22,7 +22,6 @@ mod vlq;
 
 use error::Error;
 use object::{Object, ObjectSection};
-use rustc_demangle::demangle;
 use std::{
     borrow::Cow,
     collections::BTreeMap,
@@ -183,7 +182,7 @@ impl WASM {
 
                 let tag_string = entry.tag().to_string();
                 if tag_string == "DW_TAG_subprogram" || tag_string == "DW_TAG_inline_subroutine" {
-                    println!("<{}><{:x}> {}", depth, entry.offset().0, entry.tag());
+                    //println!("<{}><{:x}> {}", depth, entry.offset().0, entry.tag());
                     // Iterate over the attributes in the DIE.
                     let mut attrs = entry.attrs();
                     while let Some(attr) = attrs.next()? {
@@ -196,14 +195,14 @@ impl WASM {
                             if let gimli::AttributeValue::DebugStrRef(offset) = attr.value() {
                                 if let Ok(slice) = dwarf.debug_str.get_str(offset) {
                                     let val = slice.to_string_lossy().to_string();
-                                    println!("   {}: {:?}", attr.name(), demangle(val.as_str()));
+                                    //println!("   {}: {:?}", attr.name(), demangle(val.as_str()));
                                 }
                             } else {
-                                println!("   {}: {:?}", attr.name(), attr.value());
+                                //println!("   {}: {:?}", attr.name(), attr.value());
                             }
                         }
                     }
-                    println!("------------")
+                    //println!("------------")
                 }
             }
 
@@ -336,8 +335,25 @@ impl WASM {
 
         sourcemap.push('{');
         sourcemap.push_str(r#""version":3,"#);
+        if let Some(os_file_name) = self.path.file_name() {
+            if let Some(file_name) = os_file_name.to_str() {
+                sourcemap.push_str(format!(r#""file":"{}","#, file_name).as_str());
+            }
+        }
+        sourcemap.push_str(r#""sourceRoot":"","#);
         sourcemap.push_str(r#""names":[],"#);
-        sourcemap.push_str(format!(r#""sources":["{}"],"#, sources.join(r#"",""#)).as_str());
+        let s: Vec<String> = sources
+            .into_iter()
+            .map(|source| {
+                if let Some(pos) = source.find(':') {
+                    source[pos + 1..].to_string()
+                } else {
+                    source
+                }
+            })
+            //.map(|source| source.rsplit('/').next().expect("NO FILENAME").to_string())
+            .collect();
+        sourcemap.push_str(format!(r#""sources":["{}"],"#, s.join(r#"",""#)).as_str());
 
         if let Some(contents) = contents {
             debug_assert!(bundle);
@@ -473,7 +489,6 @@ impl WASM {
             // We either get the id of a source file if already in the table
             // or we get the max(id) + 1 as the new id for a previously unseen
             // source file, which we promptly insert into the source table
-
             let source_id: i64 =
                 if let Some(id) = sources.iter().position(|&val| val == line.path.as_path()) {
                     id as i64

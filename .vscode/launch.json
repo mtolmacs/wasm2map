@@ -5,6 +5,12 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "type": "msedge",
+            "request": "launch",
+            "name": "Web Debug",
+            "url": "http://127.0.0.1:8080"
+        },
+        {
             "type": "lldb",
             "request": "launch",
             "name": "Debug unit tests in library 'wasm2map'",

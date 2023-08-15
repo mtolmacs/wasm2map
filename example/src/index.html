@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title></title>
+    <title>Example</title>
     <meta charset="utf-8" />
 </head>
 <body>
@@ -76,12 +76,14 @@
         };
 
         window.addEventListener("load", () => {
-            WebAssembly.instantiateStreaming(fetch('/test.wasm'), importObject).then(results => {
+            WebAssembly.instantiateStreaming(fetch('/example.wasm'), importObject).then(results => {
                 Mem.__raw_memory = results.instance.exports.memory;
                 Mem.__raw_alloc = results.instance.exports.alloc;
                 Mem.__raw_free = results.instance.exports.free;
 
-                results.instance.exports.start();
+                try {
+                    results.instance.exports.start().catch(_ => {});
+                } catch {}
             });
         });
     </script>
