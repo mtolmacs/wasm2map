@@ -9,7 +9,13 @@ unsafe extern "C" fn free(ptr: *mut u8, size: usize) {
     unsafe { std::alloc::dealloc(ptr, std::alloc::Layout::from_size_align(size, 1).unwrap()) }
 }
 
-pub unsafe fn into<'a>(str: &'a str) -> *const u8 {
+/// Turns Rust string into raw byte sequence the JS side can marshal into String
+///
+/// # Safety
+///
+/// The direct memory allocation requires unsafe and the memory has to be
+/// managed manually.
+pub unsafe fn into(str: &str) -> *const u8 {
     let bytes = str.as_bytes();
     let size = bytes.len().to_le_bytes();
     let ptr = std::alloc::alloc(std::alloc::Layout::from_size_align_unchecked(

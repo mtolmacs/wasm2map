@@ -51,12 +51,12 @@ pub(crate) fn encode(string: &str) -> Cow<'_, str> {
 
         match escape {
             QU => new_string += r#"\""#,
-            BS => new_string += r#"\\"#,
-            BB => new_string += r#"\b"#,
-            FF => new_string += r#"\f"#,
-            NN => new_string += r#"\n"#,
-            RR => new_string += r#"\r"#,
-            TT => new_string += r#"\t"#,
+            BS => new_string += r"\\",
+            BB => new_string += r"\b",
+            FF => new_string += r"\f",
+            NN => new_string += r"\n",
+            RR => new_string += r"\r",
+            TT => new_string += r"\t",
             UU => {
                 static HEX_DIGITS: [u8; 16] = *b"0123456789abcdef";
 
