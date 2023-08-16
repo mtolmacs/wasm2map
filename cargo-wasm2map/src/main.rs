@@ -51,16 +51,11 @@ struct WasmFile {
     #[arg(
         short,
         long,
-        requires = "patch",
         help = "Base URL of the sourcefile where it can be fetched from"
     )]
     base_url: Option<String>,
 
-    #[arg(
-        long,
-        requires = "patch",
-        help = "Bundle sourcefiles into the sourcemap"
-    )]
+    #[arg(long, help = "Bundle sourcefiles into the sourcemap")]
     bundle_sources: bool,
 }
 

@@ -277,7 +277,19 @@ impl WASM {
         sourcemap.push('{');
         sourcemap.push_str(r#""version":3,"#);
         sourcemap.push_str(r#""names":[],"#);
-        sourcemap.push_str(format!(r#""sources":["{}"],"#, sources.join(r#"",""#)).as_str());
+        let s: Vec<String> = sources
+            .into_iter()
+            .map(|source| {
+                if let Some(pos) = source.find(':') {
+                    source[pos + 1..].to_string()
+                } else {
+                    source
+                }
+            })
+            .map(|source| source.replace('\\', "/"))
+            //.map(|source| source.rsplit('/').next().expect("NO FILENAME").to_string())
+            .collect();
+        sourcemap.push_str(format!(r#""sources":["{}"],"#, s.join(r#"",""#)).as_str());
 
         if let Some(contents) = contents {
             debug_assert!(bundle);
