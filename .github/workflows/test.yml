@@ -98,7 +98,7 @@ jobs:
         uses: codecov/codecov-action@v3
         with:
           fail_ci_if_error: true
-coverage-unix:
+  coverage-unix:
     runs-on: ubuntu-latest
     name: ubuntu / stable / coverage
     steps:
