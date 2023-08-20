@@ -8,7 +8,7 @@ const map = SourceMapConsumer.with(json, null, consumer => {
     console.log(
         consumer.originalPositionFor({
             line: 1,
-            column: 2901,
+            column: 7709,
         })
     )
 })
