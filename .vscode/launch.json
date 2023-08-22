@@ -5,10 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "msedge",
+            "type": "firefox",
             "request": "launch",
             "name": "Web Debug",
-            "url": "http://127.0.0.1:8080"
+            "reAttach": true,
+            "firefoxExecutable": "/Users/mtolmacs/Projects/mozilla-unified/obj-aarch64-apple-darwin22.6.0/dist/Nightly.app/Contents/MacOS/firefox",
+            "url": "http://127.0.0.1:8080",
+            "log": {
+                "fileName": "${workspaceFolder}/log.txt",
+                "fileLevel": {
+                    "default": "Debug"
+                }
+            }
         },
         {
             "type": "lldb",
