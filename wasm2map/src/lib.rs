@@ -421,6 +421,8 @@ impl WASM {
         wasm.set_len(pos)?;
         wasm.seek(io::SeekFrom::End(0))?;
 
+        let extendedUrl = format!("{}?kjfgsaigfsiuiuhjfsdahhfsdgfsuadzfguwefgweuzfgwefgwqfeguzoweqgfuzweqgfouzweqgfoiwzqegfoiuzweljhasdgfsjjjjjgggzzzgjjhgfkkjhhvjvuzttcvujbvibuvcoutvupbiuvuzvuovuzvuvouvuzvouvouvuovuvuzvuzvpuuzivpuvpuzvpuzvpuzvpuvzadfouzwfgouwefbwuezdfgdasdfhgsdfhgsd", url);
+
         // Generate the souceMappingURL custom
         // section (see above for info on structure)
         const WASM_CUSTOM_SECTION_ID: u32 = 0;
@@ -428,8 +430,8 @@ impl WASM {
         let section_content = [
             &vlq::encode_uint_var(section_name.len() as u32)[..],
             section_name.as_bytes(),
-            &vlq::encode_uint_var(url.len() as u32)[..],
-            url.as_bytes(),
+            &vlq::encode_uint_var(extendedUrl.len() as u32)[..],
+            extendedUrl.as_bytes(),
         ]
         .concat();
         let section = [
