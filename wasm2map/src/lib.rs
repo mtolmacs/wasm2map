@@ -534,11 +534,7 @@ impl WASM {
             sources
                 .iter()
                 .map(Path::new)
-                .map(|path| {
-                    fs::read_to_string(path)
-                        .map(|content| Cow::Owned(format!(r#""{}""#, json::encode(&content))))
-                        .unwrap_or(Cow::Borrowed("null"))
-                })
+                .map(|content| content.map(Cow::Owned).unwrap_or(Cow::Borrowed("null")))
                 .collect()
         });
 
