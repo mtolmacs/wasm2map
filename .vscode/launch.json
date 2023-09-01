@@ -22,13 +22,15 @@
             "type": "msedge",
             "request": "launch",
             "name": "Edge Debug",
-            "url": "http://127.0.0.1:8080"
+            "url": "http://localhost:8080"
         },
         {
             "type": "chrome",
             "request": "launch",
             "name": "Chrome Debug",
-            "url": "http://127.0.0.1:8080"
+            "runtimeExecutable": "C:\\Users\\tolmi\\Projects\\wasm2map\\tools\\puppeteer\\.cache\\chrome\\win64-116.0.5845.96\\chrome-win64\\chrome.exe",
+            "webRoot": "${workspaceFolder}",
+            "url": "http://localhost:8080"
         },
         {
             "type": "lldb",
