@@ -7,6 +7,7 @@ COPY src\util.ts target\wasm32-unknown-unknown\debug\
 copy nul >> target\wasm32-unknown-unknown\debug\favicon.ico
 cargo install --path ..\cargo-wasm2map
 cargo wasm2map -p -b http://localhost:8080 --bundle-sources target\wasm32-unknown-unknown\debug\example.wasm
+jq -M . .\target\wasm32-unknown-unknown\debug\example.wasm.map > .\target\wasm32-unknown-unknown\debug\example.formatted.json
 REM wasm-opt -Os --strip-dwarf -o target\wasm32-unknown-unknown\debug\example.wasm target\wasm32-unknown-unknown\debug\example.wasm
 node ..\tools\decode\decode.js .\target\wasm32-unknown-unknown\debug\example.wasm.map .\target\wasm32-unknown-unknown\debug\sourcemap.json
 jq -M . .\target\wasm32-unknown-unknown\debug\sourcemap.json > .\target\wasm32-unknown-unknown\debug\sourcemap-formatted.json
