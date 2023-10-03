@@ -9,6 +9,6 @@ cargo install --path ..\cargo-wasm2map
 cargo wasm2map -p -b http://localhost:8080 --bundle-sources target\wasm32-unknown-unknown\debug\example.wasm
 REM wasm-opt -Os --strip-dwarf -o target\wasm32-unknown-unknown\debug\example.wasm target\wasm32-unknown-unknown\debug\example.wasm
 node ..\tools\decode\decode.js .\target\wasm32-unknown-unknown\debug\example.wasm.map .\target\wasm32-unknown-unknown\debug\sourcemap.json
-cmd.exe /c tsc --sourcemap -m es6 target\wasm32-unknown-unknown\debug\index.ts 
-cmd.exe /c tsc --sourcemap -m es6 target\wasm32-unknown-unknown\debug\util.ts
-simple-http-server -i -p 8080 .\target\wasm32-unknown-unknown\debug\
+cmd.exe /c ..\node_modules\.bin\tsc --sourcemap -m es6 target\wasm32-unknown-unknown\debug\index.ts 
+cmd.exe /c ..\node_modules\.bin\tsc --sourcemap -m es6 target\wasm32-unknown-unknown\debug\util.ts
+simple-http-server -i --ip 127.0.0.1 -p 8080 .\target\wasm32-unknown-unknown\debug\
