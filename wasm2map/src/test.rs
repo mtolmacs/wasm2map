@@ -1,4 +1,9 @@
-use std::{fs, ops::Deref, path::PathBuf};
+use std::{
+    fs::{self, File},
+    io::Write,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
 
 use crate::{error::Error, json::encode, vlq, CodePoint, WASM};
 
@@ -10,45 +15,79 @@ const WASM_SOURCEMAPPINGURL_SECTION_NAME: &[u8] = b"sourceMappingURL";
 // TODO: Test sourcemap size load
 // TODO: Test sourcemap generation
 
+/// Tests the format of the sourcemap, makes sure the JSON is valid and
+/// the required keys are present, with the right type of values.
 #[test]
-fn can_create_sourcemap() {
+fn can_create_valid_sourcemap_format() {
     testutils::run_test(|out| {
         if let Ok(mapper) = WASM::load(out) {
             let sourcemap = mapper.map_v3(false);
 
-            assert!(sourcemap.starts_with(r#"{"version":3,"names":[],"sources":["#));
-            assert!(sourcemap.ends_with(r#""}"#));
+            let parsed = serde_json::from_str::<serde_json::Value>(sourcemap.as_str())
+                .expect("Sourcemap is not a valid JSON file");
+            let json = parsed.as_object().expect("Sourcemap is not a JSON object");
+
+            let version = json
+                .get("version")
+                .expect("Sourcemap JSON object has no requied version key")
+                .as_i64()
+                .expect("Sourcemap JSON version value is not an integer");
+            assert!(version == 3);
+
+            let names = json
+                .get("names")
+                .expect("Sourcemap JSON has no names key")
+                .as_array()
+                .expect("Sourcemap JSON key names is not an array");
+            assert!(names.is_empty());
+
+            let sources = json
+                .get("sources")
+                .expect("Sourcemap JSON object has no sources key")
+                .as_array()
+                .expect("Sourcemap JSON sources value is not an array");
+            assert!(!sources.is_empty());
+            sources.iter().for_each(|value| {
+                let path = Path::new(
+                    value
+                        .as_str()
+                        .expect("Sourcemap JSON sources item is not a string"),
+                );
+                assert!(path.extension().is_some());
+            });
+
+            let mappings = json
+                .get("mappings")
+                .expect("Sourcemap JSON object has no mappings key")
+                .as_str()
+                .expect("Sourcemap JSON key mappings is not a string");
+            assert!(!mappings.is_empty());
         } else {
             unreachable!()
         }
     });
 }
 
+/// The Rust library core files are included in DWARF as relative file paths.
+/// This test checks if some of the Rust core files are included in the sources
+/// list with some leading parent directories, meaning the relative paths in
+/// DWARF are resolved.
 #[test]
 fn relative_paths_are_considered() {
     testutils::run_test(|out| {
         if let Ok(mapper) = WASM::load(out) {
             let sourcemap = mapper.map_v3(false);
 
-            // Any fixed relative path should have at least a `/` beforehand.
-            #[cfg(target_os = "windows")]
-            {
-                // TODO(mtolmacs): The slashes on Windows need to have a
-                // more robust matching method
-                assert!(sourcemap.contains(r#"\library/core/src\any.rs"#));
-                assert!(sourcemap.contains(r#"\library/core/src\panicking.rs"#));
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                assert!(sourcemap.contains("/library/core/src/any.rs"));
-                assert!(sourcemap.contains("/library/core/src/panicking.rs"));
-            }
+            assert!(sourcemap.contains("/library/core/src/any.rs"));
+            assert!(sourcemap.contains("/library/core/src/panicking.rs"));
         } else {
             unreachable!()
         }
     });
 }
 
+/// When the caller requests the bundling of source file contents, we check
+/// that the generated sourcemap has the user source code for the test code.
 #[test]
 fn can_bundle_source() {
     testutils::run_test(|out| {
@@ -56,12 +95,15 @@ fn can_bundle_source() {
             let sourcemap = mapper.map_v3(true);
             fs::write("sourcemap.json", &sourcemap).expect("FAILED to write file");
             assert!(sourcemap.contains("fn main() {}"));
+            fs::remove_file("sourcemap.json").expect("Failed to delete temp file");
         } else {
             unreachable!()
         }
     });
 }
 
+/// Check the ability of the library to modify the WASM file to add / change
+/// a sourcemap. Makes sure the library does not break the WASM binary.
 #[test]
 fn can_add_and_update_sourcemap() {
     testutils::run_test(|out| {
@@ -158,6 +200,9 @@ fn can_add_and_update_sourcemap() {
     })
 }
 
+/// Just check if an error is raised when the target WASM binary does not exists.
+/// This monitors a regression in the code previously present, where patching
+/// failed silently and the user did not recognize why there is no sourcemap loaded.
 #[test]
 fn test_path_handles_nonexistent_wasm() {
     testutils::run_test(|out| {
@@ -176,6 +221,7 @@ fn test_path_handles_nonexistent_wasm() {
     });
 }
 
+/// Make sure the error type of this crate handles all needed cases.
 #[test]
 fn test_error_types() {
     fn errors() -> Result<(), Box<dyn std::error::Error>> {
@@ -210,11 +256,14 @@ fn test_error_types() {
     assert_eq!(format!("{}", error), "This is a test");
 }
 
+/// Test the VLQ encoding of numbers to VLQ byte sequences, which
+/// can be turned into "mappings" in the sourcemap.
 #[test]
 fn test_numeric_encode_to_byte_sequence() {
     assert_eq!(vlq::encode_uint_var(432), vec![176, 3])
 }
 
+/// Check if the Debug, Display is present on types in this library
 #[test]
 fn test_derived_macros_present() {
     testutils::run_test(|out| {
@@ -233,6 +282,8 @@ fn test_derived_macros_present() {
     })
 }
 
+/// Test our specialized JSON encoding is working, all special characters are
+/// encoded properly.
 #[test]
 fn test_json_encode() {
     let buf = [0; 32]
@@ -249,6 +300,62 @@ fn test_json_encode() {
         encode(std::str::from_utf8(buf2.as_slice()).expect("Wrong second test buffer data")),
         r#"$#\"\\"#
     );
+}
+
+/// Uses the Mozilla source-map package (which is directly used by the Firefox
+/// browser to resolve sourcemaps) to retrieve a known good position for the
+/// test source.
+#[test]
+fn position_retrieval_works() {
+    testutils::run_test(|out| {
+        let sourcemap_file_path = {
+            let mut path = testutils::get_target_dir();
+            path.push("target");
+            path.push(format!("test{}.wasm.map", testutils::get_thread_id()));
+            path
+        };
+
+        if let Ok(mapper) = WASM::load(out) {
+            let sourcemap = mapper.map_v3(false);
+
+            // Write out the map file because we need to hand it over to node
+            {
+                let mut sourcemap_file = File::create(sourcemap_file_path.as_path())
+                    .expect("Cannot create sourcemap file");
+                write!(sourcemap_file, "{}", sourcemap).expect("Cannot write to sourcemap file");
+            }
+
+            // Call source-map node service
+            let source_mapper = std::process::Command::new("node")
+                .args([
+                    format!(
+                        "{}/tools/source-map/map.js",
+                        testutils::get_target_dir().display().to_string().as_str()
+                    )
+                    .as_str(),
+                    format!(
+                        "{}/target/{}",
+                        testutils::get_target_dir().display().to_string().as_str(),
+                        sourcemap_file_path.file_name().unwrap().to_string_lossy()
+                    )
+                    .as_str(),
+                    "12914",
+                ])
+                .output();
+            if let Ok(output) = source_mapper {
+                let err = String::from_utf8_lossy(&output.stderr).to_string();
+                assert!(
+                    err.is_empty(),
+                    "The error was:\n============\n\n{}\n\n============",
+                    err
+                );
+
+                let pos = String::from_utf8_lossy(&output.stdout).to_string();
+                let parsed = serde_json::from_str::<serde_json::Value>(pos.as_str())
+                    .expect("The source-map call did not return a JSON object");
+            }
+        }
+    });
 }
 
 mod testutils {
