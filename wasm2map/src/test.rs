@@ -1,6 +1,6 @@
+use sourcemap::SourceMap;
 use std::{
-    fs::{self, File},
-    io::Write,
+    fs,
     ops::Deref,
     path::{Path, PathBuf},
 };
@@ -307,55 +307,51 @@ fn test_json_encode() {
 /// test source.
 #[test]
 fn position_retrieval_works() {
-    testutils::run_test(|out| {
-        let sourcemap_file_path = {
+    let target_dir = testutils::get_target_dir();
+
+    let golden_wasm_path = {
+        let mut path = target_dir.clone();
+        path.push("assets");
+        path.push("golden.wasm");
+        path
+    };
+
+    if let Ok(mapper) = WASM::load(golden_wasm_path.as_path()) {
+        let sourcemap = mapper.map_v3(false);
+        // fs::write(generated_sourcemap_path, sourcemap.as_str())
+        //     .expect("Cannot write out candidate map");
+        let sm =
+            SourceMap::from_slice(sourcemap.as_bytes()).expect("Generated sourcemap is not valid");
+        let golden = {
             let mut path = testutils::get_target_dir();
-            path.push("target");
-            path.push(format!("test{}.wasm.map", testutils::get_thread_id()));
-            path
+            path.push("assets");
+            path.push("golden.wasm.map");
+            SourceMap::from_reader(
+                fs::File::open(path.as_path()).expect("Cannot load golden.wasm.map"),
+            )
+            .expect("Cannot parse sourcemap golden.wasm.map")
         };
 
-        if let Ok(mapper) = WASM::load(out) {
-            let sourcemap = mapper.map_v3(false);
+        golden.tokens().for_each(|golden_token| {
+            let col = golden_token.get_dst_col();
+            let line = golden_token.get_dst_line();
+            let token = sm
+                .lookup_token(line, col)
+                .expect("Position from golden.json is not present in the sourcemap");
+            let left = golden_token.to_string();
+            let right = token.to_string();
 
-            // Write out the map file because we need to hand it over to node
-            {
-                let mut sourcemap_file = File::create(sourcemap_file_path.as_path())
-                    .expect("Cannot create sourcemap file");
-                write!(sourcemap_file, "{}", sourcemap).expect("Cannot write to sourcemap file");
-            }
-
-            // Call source-map node service
-            let source_mapper = std::process::Command::new("node")
-                .args([
-                    format!(
-                        "{}/tools/source-map/map.js",
-                        testutils::get_target_dir().display().to_string().as_str()
-                    )
-                    .as_str(),
-                    format!(
-                        "{}/target/{}",
-                        testutils::get_target_dir().display().to_string().as_str(),
-                        sourcemap_file_path.file_name().unwrap().to_string_lossy()
-                    )
-                    .as_str(),
-                    "12914",
-                ])
-                .output();
-            if let Ok(output) = source_mapper {
-                let err = String::from_utf8_lossy(&output.stderr).to_string();
-                assert!(
-                    err.is_empty(),
-                    "The error was:\n============\n\n{}\n\n============",
-                    err
-                );
-
-                let pos = String::from_utf8_lossy(&output.stdout).to_string();
-                let parsed = serde_json::from_str::<serde_json::Value>(pos.as_str())
-                    .expect("The source-map call did not return a JSON object");
-            }
-        }
-    });
+            assert!(
+                left.as_str().eq(right.as_str()),
+                "[{}] {} <=> {}",
+                col,
+                left,
+                right
+            );
+        });
+    } else {
+        unreachable!();
+    }
 }
 
 mod testutils {
