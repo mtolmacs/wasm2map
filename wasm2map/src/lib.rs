@@ -238,7 +238,7 @@ impl WASM {
                             .into();
                         path.push(relative);
                         path = match path.to_str() {
-                            Some(t) => t.replace('\\', "/").into(),
+                            Some(t) => t.replace('\\', "/").replace("//", "/").into(),
                             None => path,
                         };
                     }
@@ -350,7 +350,7 @@ impl WASM {
                     source
                 }
             })
-            .map(|source| source.replace("/Users/tolmi/Projects/wasm2map/", ""))
+            //.map(|source| source.replace("/Users/tolmi/Projects/wasm2map/", ""))
             //.map(|source| source.rsplit('/').next().expect("NO FILENAME").to_string())
             .collect();
         sourcemap.push_str(format!(r#""sources":["{}"],"#, s.join(r#"",""#)).as_str());
