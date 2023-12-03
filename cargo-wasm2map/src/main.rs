@@ -14,7 +14,7 @@
 
 use clap::{Args, Parser};
 use std::{fs, path::PathBuf};
-use wasm2map::WASM;
+use wasm2map::{Wasm, WasmReader, WASM};
 
 // Cargo commands receive the name of the subcommand as the main command
 // so we need to consume the name of our executable in order to get to the
@@ -101,8 +101,11 @@ fn main() -> Result<(), String> {
     // TODO(mtolamcs): Test the base url parameter to make sure its a valid
     // url and it also does not reference the map file
 
-    // Load the WASM file to memory and parse the DWARF code section
-    let mut wasm = WASM::load(&args.path).map_err(|err| err.to_string())?;
+    // Open the WASM file
+    let reader = WasmReader::from_path(&args.path).map_err(|err| err.to_string())?;
+
+    // Parse the DWARF code section
+    let mut wasm = Wasm::new(&reader, None).map_err(|err| err.to_string())?;
 
     // Generate the source map JSON for the loaded WASM
     let sourcemap = wasm.map_v3(args.bundle_sources);

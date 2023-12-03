@@ -16,21 +16,139 @@
 
 mod error;
 mod json;
+mod reader;
+mod relocate;
 #[cfg(test)]
 mod test;
 mod vlq;
 
 use error::Error;
-use object::{Object, ObjectSection};
+use gimli::{Dwarf, EndianSlice, LittleEndian};
+pub use object::ReadRef;
+use object::{File, Object, ObjectSection, ObjectSymbol, Relocation};
+pub use reader::WasmReader;
+use relocate::Relocate;
+use sourcemap::SourceMapBuilder;
 use std::{
     borrow::Cow,
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     fs,
     io::{self, Seek, Write},
     ops::Deref,
     path::{Path, PathBuf},
+    rc::Rc,
     str,
 };
+
+type RelocationMap = HashMap<usize, Relocation>;
+
+///
+pub struct Wasm<'raw, R: ReadRef<'raw>> {
+    object: File<'raw, R>,
+    mapper: SourceMapBuilder,
+}
+
+impl<'a, R> Wasm<'a, R>
+where
+    R: ReadRef<'a>,
+{
+    ///
+    ///
+    ///
+    pub fn new(binary: R, name: Option<&str>) -> Result<Self, Error> {
+        match File::parse(binary)? {
+            file @ File::Wasm(_) => Ok(Self {
+                object: file,
+                mapper: SourceMapBuilder::new(name),
+            }),
+            _ => Err(Error::from("Data does not represent a WASM file")),
+        }
+    }
+
+    fn generate() -> Result<(), Error> {
+        //let mut load_section = |id: gimli::SectionId| -> Result<_, Error> { Err(Error::from("")) };
+        //let dwarf = Dwarf::load(&mut load_section)?;
+        Ok(())
+    }
+
+    fn load_file_section(
+        &mut self,
+        id: gimli::SectionId,
+        is_dwo: bool,
+    ) -> Result<Relocate<EndianSlice<'a, LittleEndian>>, Error> {
+        let mut relocations = RelocationMap::default();
+        let name = if is_dwo {
+            id.dwo_name()
+        } else {
+            Some(id.name())
+        };
+
+        let data = match name.and_then(|name| self.object.section_by_name(&name)) {
+            Some(ref section) => {
+                // DWO sections never have relocations, so don't bother.
+                if !is_dwo {
+                    for (offset64, mut relocation) in section.relocations() {
+                        let offset = offset64 as usize;
+                        if offset as u64 != offset64 {
+                            continue;
+                        }
+                        let offset = offset as usize;
+                        match relocation.kind() {
+                            object::RelocationKind::Absolute => {
+                                match relocation.target() {
+                                    object::RelocationTarget::Symbol(symbol_idx) => {
+                                        match self.object.symbol_by_index(symbol_idx) {
+                                            Ok(symbol) => {
+                                                let addend = symbol
+                                                    .address()
+                                                    .wrapping_add(relocation.addend() as u64);
+                                                relocation.set_addend(addend as i64);
+                                            }
+                                            Err(_) => {
+                                                eprintln!(
+                                    "Relocation with invalid symbol for section {} at offset 0x{:08x}",
+                                    section.name().unwrap(),
+                                    offset
+                                );
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                                if relocations.insert(offset, relocation).is_some() {
+                                    eprintln!(
+                                        "Multiple relocations for section {} at offset 0x{:08x}",
+                                        section.name().unwrap(),
+                                        offset
+                                    );
+                                }
+                            }
+                            _ => {
+                                eprintln!(
+                                    "Unsupported relocation for section {} at offset 0x{:08x}",
+                                    section.name().unwrap(),
+                                    offset
+                                );
+                            }
+                        }
+                    }
+                }
+                section.uncompressed_data()?
+            }
+            // Use a non-zero capacity so that `ReaderOffsetId`s are unique.
+            None => Cow::Owned(Vec::with_capacity(1)),
+        };
+        let reader = gimli::EndianSlice::new(&data, LittleEndian);
+        let section = reader;
+        Ok(Relocate {
+            relocations: Rc::new(relocations),
+            section,
+            reader,
+        })
+    }
+}
+
+////////////////////
 
 const DWARF_CODE_SECTION_ID: usize = 10;
 
