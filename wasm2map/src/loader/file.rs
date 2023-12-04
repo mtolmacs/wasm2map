@@ -1,45 +1,37 @@
+use crate::error::Error;
+use object::{ReadCache, ReadRef};
 use std::{
     fs::File,
     io::{Read, Seek},
-    marker::PhantomData,
     path::Path,
 };
 
-use memmap2::Mmap;
-use object::ReadRef;
-
-use crate::error::Error;
-
 ///
 #[derive(Debug)]
-pub struct WasmReader<R: Read + Seek> {
-    data: Mmap,
-    _marker: PhantomData<R>,
+pub struct WasmLoader<R: Read + Seek> {
+    data: ReadCache<R>,
 }
 
-impl WasmReader<File> {
+impl WasmLoader<File> {
     ///
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Error> {
         let file = File::open(path)?;
-
         Ok(Self {
-            data: unsafe { memmap2::Mmap::map(&file) }?,
-            _marker: PhantomData,
+            data: ReadCache::new(file),
         })
     }
 
     ///
     pub fn from_file(file: File) -> Result<Self, Error> {
-        Ok(Self {
-            data: unsafe { memmap2::Mmap::map(&file) }?,
-            _marker: PhantomData,
-        })
+        Self {
+            data: ReadCache::new(file),
+        }
     }
 }
 
-impl<'a, R: Read + Seek> ReadRef<'a> for &'a WasmReader<R> {
+impl<'a, R: Read + Seek> ReadRef<'a> for &'a WasmLoader<R> {
     fn len(self) -> Result<u64, ()> {
-        self.data.len().try_into().map_err(|_| ())
+        self.data.len()
     }
 
     fn read_bytes_at(self, offset: u64, size: u64) -> Result<&'a [u8], ()> {

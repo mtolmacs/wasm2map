@@ -345,6 +345,10 @@ fn position_retrieval_works() {
     });
 }
 
+// TODO: Test relocation
+
+// TODO: Test DWO?
+
 mod testutils {
     use std::{
         fs, panic,

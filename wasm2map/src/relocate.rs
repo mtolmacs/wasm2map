@@ -7,23 +7,20 @@ pub type RelocationMap = HashMap<usize, Relocation>;
 #[derive(Debug, Clone)]
 pub struct Relocate<R: Reader<Offset = usize>> {
     pub relocations: Rc<RelocationMap>,
-    pub section: R,
+    pub offset: usize,
     pub reader: R,
 }
 
-impl<'a, R: gimli::Reader<Offset = usize>> Relocate<R> {
+impl<R: gimli::Reader<Offset = usize>> Relocate<R> {
     pub fn relocate(&self, offset: usize, value: u64) -> u64 {
         if let Some(relocation) = self.relocations.get(&offset) {
-            match relocation.kind() {
-                object::RelocationKind::Absolute => {
-                    if relocation.has_implicit_addend() {
-                        // Use the explicit addend too, because it may have the symbol value.
-                        return value.wrapping_add(relocation.addend() as u64);
-                    } else {
-                        return relocation.addend() as u64;
-                    }
+            if let object::RelocationKind::Absolute = relocation.kind() {
+                if relocation.has_implicit_addend() {
+                    // Use the explicit addend too, because it may have the symbol value.
+                    return value.wrapping_add(relocation.addend() as u64);
+                } else {
+                    return relocation.addend() as u64;
                 }
-                _ => {}
             }
         };
         value
@@ -35,27 +32,23 @@ impl<R: gimli::Reader<Offset = usize>> Reader for Relocate<R> {
     type Offset = R::Offset;
 
     fn read_address(&mut self, address_size: u8) -> gimli::Result<u64> {
-        let offset = self.reader.offset_from(&self.section);
         let value = self.reader.read_address(address_size)?;
-        Ok(self.relocate(offset, value))
+        Ok(self.relocate(self.offset, value))
     }
 
     fn read_length(&mut self, format: gimli::Format) -> gimli::Result<usize> {
-        let offset = self.reader.offset_from(&self.section);
         let value = self.reader.read_length(format)?;
-        <usize as gimli::ReaderOffset>::from_u64(self.relocate(offset, value as u64))
+        <usize as gimli::ReaderOffset>::from_u64(self.relocate(self.offset, value as u64))
     }
 
     fn read_offset(&mut self, format: gimli::Format) -> gimli::Result<usize> {
-        let offset = self.reader.offset_from(&self.section);
         let value = self.reader.read_offset(format)?;
-        <usize as gimli::ReaderOffset>::from_u64(self.relocate(offset, value as u64))
+        <usize as gimli::ReaderOffset>::from_u64(self.relocate(self.offset, value as u64))
     }
 
     fn read_sized_offset(&mut self, size: u8) -> gimli::Result<usize> {
-        let offset = self.reader.offset_from(&self.section);
         let value = self.reader.read_sized_offset(size)?;
-        <usize as gimli::ReaderOffset>::from_u64(self.relocate(offset, value as u64))
+        <usize as gimli::ReaderOffset>::from_u64(self.relocate(self.offset, value as u64))
     }
 
     #[inline]
