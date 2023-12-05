@@ -14,6 +14,7 @@
 //! * [wasm_sourcemap.py](https://github.com/emscripten-core/emscripten/blob/main/tools/wasm-sourcemap.py) by the Emscripten Team
 //! * [WebAssembly Debugging](https://medium.com/oasislabs/webassembly-debugging-bec0aa93f8c6) by Will Scott and Oasis Labs
 
+mod dwarf;
 mod error;
 mod json;
 mod loader;
@@ -23,14 +24,13 @@ mod relocate;
 mod test;
 mod vlq;
 
+use dwarf::{DwarfReader, Raw};
 use error::Error;
-use gimli::{self, Dwarf, LittleEndian, Reader};
+use gimli::{self, Reader};
 pub use loader::WasmLoader;
 pub use object::ReadRef;
-use object::{self, Object, ObjectSection, ObjectSymbol};
-use reader::WasmReader;
-use relocate::{Relocate, RelocationMap};
-use sourcemap::{SourceMap, SourceMapBuilder};
+use object::{self, Object, ObjectSection};
+use sourcemap::SourceMapBuilder;
 use std::{
     borrow::Cow,
     collections::BTreeMap,
@@ -38,50 +38,16 @@ use std::{
     io::{self, Seek, Write},
     ops::Deref,
     path::{Path, PathBuf},
-    rc::Rc,
     str,
 };
 
-struct Raw<'object, R: ReadRef<'object>> {
-    object: object::File<'object, R>,
-    parent: Option<object::File<'object, R>>,
-    sup: Option<object::File<'object, R>>,
-}
-
-impl<'object, R: ReadRef<'object>> Raw<'object, R> {
-    ///
-    ///
-    ///
-    pub fn new(
-        binary: R,
-        dwo_parent: Option<R>,
-        sup_file: Option<R>,
-    ) -> Result<Raw<'object, R>, Error> {
-        Ok(Raw {
-            object: Self::parse_file(binary)?,
-            parent: dwo_parent.and_then(|dwo_parent| Self::parse_file(dwo_parent).ok()),
-            sup: sup_file.and_then(|sup_file| Self::parse_file(sup_file).ok()),
-        })
-    }
-
-    fn parse_file(binary: R) -> Result<object::File<'object, R>, Error> {
-        match object::File::parse(binary)? {
-            file @ object::File::Wasm(_) => Ok(file),
-            _ => Err(Error::from("Data does not represent a WASM file")),
-        }
-    }
-}
-
 ///
 pub struct Wasm<'wasm, R: ReadRef<'wasm>> {
-    raw: Raw<'wasm, R>,
+    dwarf: DwarfReader<'wasm, R>,
     mapper: SourceMapBuilder,
 }
 
-impl<'wasm, R> Wasm<'wasm, R>
-where
-    R: ReadRef<'wasm>,
-{
+impl<'wasm, R: ReadRef<'wasm> + 'wasm> Wasm<'wasm, R> {
     ///
     ///
     ///
@@ -92,7 +58,7 @@ where
         sup_file: Option<R>,
     ) -> Result<Self, Error> {
         Ok(Self {
-            raw: Raw::new(binary, dwo_parent, sup_file)?,
+            dwarf: DwarfReader::<'wasm, R>::new(Raw::new(binary, dwo_parent, sup_file)?),
             mapper: SourceMapBuilder::new(name),
         })
     }
@@ -100,210 +66,62 @@ where
     ///
     ///
     ///
-    pub fn map_v3(&'wasm mut self) -> Result<(), Error> {
-        let Wasm { raw, mapper } = self;
-
-        // If the WASM debug info is in a split DWARF object (DWO), then load
-        // the parent object first, so we can link them. The parent archive
-        // contains references to the DWO object we resolve later in generating
-        // the source map
-        let parent = if let Some(parent) = &raw.parent {
-            let mut load_parent_section =
-                |id: gimli::SectionId| Self::load_file_section(id, parent, false);
-            Some(gimli::Dwarf::load(&mut load_parent_section)?)
-        } else {
-            None
-        };
-        let parent = parent.as_ref();
-
-        // This is the target object binary we are generating the sourcemap for
-        let mut load_section =
-            |id: gimli::SectionId| Self::load_file_section(id, &raw.object, parent.is_some());
-
-        let mut dwarf = gimli::Dwarf::load(&mut load_section)?;
-
-        if parent.is_some() {
-            if let Some(parent) = parent {
-                dwarf.make_dwo(parent);
-            } else {
-                dwarf.file_type = gimli::DwarfFileType::Dwo;
-            }
-        }
-
-        // Load optional supplemental file
-        if let Some(sup) = &raw.sup {
-            let mut load_sup_section = |id: gimli::SectionId| {
-                // Note: we really only need the `.debug_str` section,
-                // but for now we load them all.
-                Self::load_file_section(id, sup, false)
-            };
-            dwarf.load_sup(&mut load_sup_section)?;
-        }
-
-        dwarf.populate_abbreviations_cache(gimli::AbbreviationsCacheStrategy::All);
-
-        // Finally use the loaded DWARF data to generate the sourcemap
-        Self::generate(&dwarf, mapper)
-    }
-
-    ///
-    ///
-    ///
-    fn load_file_section(
-        id: gimli::SectionId,
-        object: &'wasm object::File<'wasm, R>,
-        is_dwo: bool,
-    ) -> Result<Relocate<gimli::EndianReader<LittleEndian, WasmReader<'wasm>>>, Error> {
-        let mut relocations = RelocationMap::default();
-        let name = if is_dwo {
-            id.dwo_name()
-        } else {
-            Some(id.name())
-        };
-
-        let data = match name.and_then(|name| object.section_by_name(name)) {
-            Some(ref section) => {
-                // DWO sections never have relocations, so don't bother.
-                if !is_dwo {
-                    // Collect the relocations in this section and add to the relocation map
-                    relocations.extend(Self::get_relocations(object, section)?);
-                }
-                section.uncompressed_data()?
-            }
-            // Use a non-zero capacity so that `ReaderOffsetId`s are unique.
-            None => Cow::Owned(Vec::with_capacity(1)),
-        };
-
-        let reader = gimli::EndianReader::new(WasmReader { data }, LittleEndian);
-        let offset = reader.offset_from(&reader);
-        Ok(Relocate {
-            relocations: Rc::new(relocations),
-            offset,
-            reader,
-        })
-    }
-
-    ///
-    ///
-    ///
-    fn get_relocations(
-        object: &object::File<'wasm, R>,
-        section: &object::Section<'wasm, 'wasm, R>,
-    ) -> Result<RelocationMap, Error> {
-        let mut relocations: RelocationMap = RelocationMap::new();
-
-        for (offset64, mut relocation) in section.relocations() {
-            let offset = offset64 as usize;
-            if offset as u64 != offset64 {
-                continue;
-            }
-
-            match relocation.kind() {
-                object::RelocationKind::Absolute => {
-                    if let object::RelocationTarget::Symbol(symbol_idx) = relocation.target() {
-                        match object.symbol_by_index(symbol_idx) {
-                            Ok(symbol) => {
-                                let addend =
-                                    symbol.address().wrapping_add(relocation.addend() as u64);
-                                relocation.set_addend(addend as i64);
-                            }
-                            Err(_) => {
-                                let msg = format!(
-                                    "Relocation with invalid symbol for section {} at offset 0x{:08x}",
-                                    section.name().unwrap(),
-                                    offset
-                                );
-                                return Err(msg.into());
-                            }
-                        }
-                    }
-
-                    if relocations.insert(offset, relocation).is_some() {
-                        let msg = format!(
-                            "Multiple relocations for section {} at offset 0x{:08x}",
-                            section.name().unwrap(),
-                            offset
-                        );
-                        return Err(msg.into());
-                    }
-                }
-                _ => {
-                    let msg = format!(
-                        "Unsupported relocation for section {} at offset 0x{:08x}",
-                        section.name().unwrap(),
-                        offset
-                    );
-                    return Err(msg.into());
-                }
-            }
-        }
-
-        Ok(relocations)
-    }
-
-    fn generate<T: gimli::Reader>(
-        dwarf: &gimli::Dwarf<T>,
-        mapper: &'wasm mut SourceMapBuilder,
-    ) -> Result<(), Error> {
-        let mut iter = dwarf.units();
+    pub fn build(&'wasm mut self, bundle_sources: bool) -> Result<(), Error> {
+        let mut iter = self.dwarf.get()?.units();
         while let Some(header) = iter.next()? {
-            let unit = match dwarf.unit(header) {
+            let unit = match self.dwarf.get()?.unit(header) {
                 Ok(unit) => unit,
                 Err(_) => continue,
             };
-            match Self::generate_line(&unit, dwarf, mapper) {
-                Ok(_) => (),
-                Err(err) => return Err(err),
+            if let Some(program) = unit.line_program.clone() {
+                //let header = program.header();
+                //let base = if header.version() >= 5 { 0 } else { 1 };
+                //header.directory(directory)
+                let mut rows = program.rows();
+                while let Some((line_header, row)) = rows.next_row()? {
+                    let line = match row.line() {
+                        Some(line) => line.get(),
+                        None => 0,
+                    };
+                    let column = match row.column() {
+                        gimli::ColumnType::Column(column) => column.get(),
+                        gimli::ColumnType::LeftEdge => 0,
+                    };
+                    let file = match row.file(line_header) {
+                        Some(file) => {
+                            let reader = self.dwarf.get()?.attr_string(&unit, file.path_name())?;
+                            let file_name = reader.to_string_lossy()?;
+                            let sid = self.mapper.add_source(file_name.as_ref());
+                            Some(sid)
+                        }
+                        None => None,
+                    };
+
+                    // TODO: Bundle sources?
+
+                    self.mapper.add_raw(
+                        1,
+                        row.address().try_into()?,
+                        line.try_into()?,
+                        column.try_into()?,
+                        file,
+                        None, // TODO: Look up name
+                    );
+
+                    //if row.end_sequence() {}
+                }
             }
         }
+
         Ok(())
     }
 
-    fn generate_line<T: Reader>(
-        unit: &gimli::Unit<T>,
-        dwarf: &gimli::Dwarf<T>,
-        mapper: &mut SourceMapBuilder,
-    ) -> Result<(), Error> {
-        if let Some(program) = unit.line_program.clone() {
-            let header = program.header();
-            let base = if header.version() >= 5 { 0 } else { 1 };
-            //header.directory(directory)
-            let mut rows = program.rows();
-            while let Some((line_header, row)) = rows.next_row()? {
-                let line = match row.line() {
-                    Some(line) => line.get(),
-                    None => 0,
-                };
-                let column = match row.column() {
-                    gimli::ColumnType::Column(column) => column.get(),
-                    gimli::ColumnType::LeftEdge => 0,
-                };
-                let file = match row.file(line_header) {
-                    Some(file) => {
-                        let reader = dwarf.attr_string(unit, file.path_name())?;
-                        let file_name = reader.to_string_lossy()?;
-                        let sid = mapper.add_source(file_name.as_ref());
-                        Some(sid)
-                    }
-                    None => None,
-                };
+    ///
+    pub fn into_string(self) -> String {
+        let mut buf: Vec<u8> = Vec::new();
+        self.mapper.into_sourcemap().to_writer(&mut buf).unwrap();
 
-                mapper.add_raw(
-                    1,
-                    row.address().try_into()?,
-                    line.try_into()?,
-                    column.try_into()?,
-                    file,
-                    None, // TODO: Look up name
-                );
-
-                if row.end_sequence() {}
-
-                //self.mapper.into_sourcemap()
-            }
-        }
-
-        Ok(())
+        String::from_utf8(buf).unwrap()
     }
 }
 
