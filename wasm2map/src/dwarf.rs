@@ -9,7 +9,7 @@ use object::{
 };
 use std::{borrow::Cow, cell::OnceCell, rc::Rc};
 
-pub type ReifiedDwarf<'a> = Dwarf<Relocate<EndianReader<LittleEndian, WasmReader<'a>>>>;
+pub type Relocator<'a> = Relocate<EndianReader<LittleEndian, WasmReader<'a>>>;
 
 pub struct Raw<'reader, R: ReadRef<'reader>> {
     binary: File<'reader, R>,
@@ -44,7 +44,7 @@ where
 ///
 pub struct DwarfReader<'reader, R: ReadRef<'reader> + 'reader> {
     raw: Raw<'reader, R>,
-    pub dwarf: OnceCell<ReifiedDwarf<'reader>>,
+    pub dwarf: OnceCell<Dwarf<Relocator<'reader>>>,
 }
 
 impl<'reader, R> DwarfReader<'reader, R>
@@ -64,9 +64,7 @@ where
     ///
     ///
     ///
-    pub fn get(
-        &'reader self,
-    ) -> Result<&Dwarf<Relocate<EndianReader<LittleEndian, WasmReader<'reader>>>>, Error> {
+    pub fn get(&'reader self) -> Result<&Dwarf<Relocator<'reader>>, Error> {
         if self.dwarf.get().is_none() {
             // If the WASM debug info is in a split DWARF object (DWO), then load
             // the parent object first, so we can link them. The parent archive
@@ -121,7 +119,7 @@ where
         id: gimli::SectionId,
         object: &'reader File<'reader, R>,
         is_dwo: bool,
-    ) -> Result<Relocate<gimli::EndianReader<LittleEndian, WasmReader<'reader>>>, Error> {
+    ) -> Result<Relocator<'reader>, Error> {
         let mut relocations = RelocationMap::default();
         let name = if is_dwo {
             id.dwo_name()
