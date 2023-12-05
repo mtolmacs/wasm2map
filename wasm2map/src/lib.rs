@@ -30,7 +30,7 @@ pub use object::ReadRef;
 use object::{self, Object, ObjectSection, ObjectSymbol};
 use reader::WasmReader;
 use relocate::{Relocate, RelocationMap};
-use sourcemap::SourceMapBuilder;
+use sourcemap::{SourceMap, SourceMapBuilder};
 use std::{
     borrow::Cow,
     collections::BTreeMap,
@@ -101,7 +101,13 @@ where
     ///
     ///
     pub fn map_v3(&'wasm mut self) -> Result<(), Error> {
-        let parent = if let Some(parent) = &self.raw.parent {
+        let Wasm { raw, mapper } = self;
+
+        // If the WASM debug info is in a split DWARF object (DWO), then load
+        // the parent object first, so we can link them. The parent archive
+        // contains references to the DWO object we resolve later in generating
+        // the source map
+        let parent = if let Some(parent) = &raw.parent {
             let mut load_parent_section =
                 |id: gimli::SectionId| Self::load_file_section(id, parent, false);
             Some(gimli::Dwarf::load(&mut load_parent_section)?)
@@ -110,10 +116,12 @@ where
         };
         let parent = parent.as_ref();
 
+        // This is the target object binary we are generating the sourcemap for
         let mut load_section =
-            |id: gimli::SectionId| Self::load_file_section(id, &self.raw.object, parent.is_some());
+            |id: gimli::SectionId| Self::load_file_section(id, &raw.object, parent.is_some());
 
         let mut dwarf = gimli::Dwarf::load(&mut load_section)?;
+
         if parent.is_some() {
             if let Some(parent) = parent {
                 dwarf.make_dwo(parent);
@@ -122,7 +130,8 @@ where
             }
         }
 
-        if let Some(sup) = self.raw.sup.as_ref() {
+        // Load optional supplemental file
+        if let Some(sup) = &raw.sup {
             let mut load_sup_section = |id: gimli::SectionId| {
                 // Note: we really only need the `.debug_str` section,
                 // but for now we load them all.
@@ -133,9 +142,8 @@ where
 
         dwarf.populate_abbreviations_cache(gimli::AbbreviationsCacheStrategy::All);
 
-        self.generate(&dwarf);
-
-        Ok(())
+        // Finally use the loaded DWARF data to generate the sourcemap
+        Self::generate(&dwarf, mapper)
     }
 
     ///
@@ -233,14 +241,17 @@ where
         Ok(relocations)
     }
 
-    fn generate<T: gimli::Reader>(&'wasm mut self, dwarf: &gimli::Dwarf<T>) -> Result<(), Error> {
+    fn generate<T: gimli::Reader>(
+        dwarf: &gimli::Dwarf<T>,
+        mapper: &'wasm mut SourceMapBuilder,
+    ) -> Result<(), Error> {
         let mut iter = dwarf.units();
         while let Some(header) = iter.next()? {
             let unit = match dwarf.unit(header) {
                 Ok(unit) => unit,
                 Err(_) => continue,
             };
-            match self.generate_line(&unit, dwarf) {
+            match Self::generate_line(&unit, dwarf, mapper) {
                 Ok(_) => (),
                 Err(err) => return Err(err),
             }
@@ -249,9 +260,9 @@ where
     }
 
     fn generate_line<T: Reader>(
-        &'wasm mut self,
         unit: &gimli::Unit<T>,
         dwarf: &gimli::Dwarf<T>,
+        mapper: &mut SourceMapBuilder,
     ) -> Result<(), Error> {
         if let Some(program) = unit.line_program.clone() {
             let header = program.header();
@@ -271,13 +282,13 @@ where
                     Some(file) => {
                         let reader = dwarf.attr_string(unit, file.path_name())?;
                         let file_name = reader.to_string_lossy()?;
-                        let sid = self.mapper.add_source(file_name.as_ref());
+                        let sid = mapper.add_source(file_name.as_ref());
                         Some(sid)
                     }
                     None => None,
                 };
 
-                self.mapper.add_raw(
+                mapper.add_raw(
                     1,
                     row.address().try_into()?,
                     line.try_into()?,
