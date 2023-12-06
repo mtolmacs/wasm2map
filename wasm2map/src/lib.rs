@@ -48,7 +48,7 @@ impl<'wasm, R: ReadRef<'wasm> + 'wasm> Wasm<'wasm, R> {
         sup_file: Option<R>,
     ) -> Result<Self, Error> {
         Ok(Self {
-            dwarf: DwarfReader::<'wasm, R>::new(Raw::new(binary, dwo_parent, sup_file)?),
+            dwarf: DwarfReader::new(Raw::new(binary, dwo_parent, sup_file)?),
         })
     }
 

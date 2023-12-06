@@ -53,8 +53,8 @@ where
     ///
     ///
     ///
-    pub fn new(raw: Raw<'reader, R>) -> DwarfReader<'reader, R> {
-        DwarfReader {
+    pub fn new(raw: Raw<'reader, R>) -> Self {
+        Self {
             raw,
             dwarf: OnceCell::new(),
         }
