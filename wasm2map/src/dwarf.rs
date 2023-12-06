@@ -64,51 +64,58 @@ where
     ///
     ///
     pub fn get(&'reader self) -> Result<&Dwarf<Relocator<'reader>>, Error> {
-        if self.dwarf.get().is_none() {
-            // If the WASM debug info is in a split DWARF object (DWO), then load
-            // the parent object first, so we can link them. The parent archive
-            // contains references to the DWO object we resolve later in generating
-            // the source map
-            let parent = if let Some(parent) = &self.raw.dwo_parent {
-                let load_parent_section =
-                    |id: gimli::SectionId| Self::load_file_section(id, parent, false);
-                Some(gimli::Dwarf::load(load_parent_section)?)
+        self.dwarf.get().ok_or(()).or_else(|_| self.load())
+    }
+}
+
+impl<'reader, R> DwarfReader<'reader, R>
+where
+    R: ReadRef<'reader> + 'reader,
+{
+    ///
+    ///
+    ///
+    fn load(&'reader self) -> Result<&Dwarf<Relocator<'reader>>, Error> {
+        // If the WASM debug info is in a split DWARF object (DWO), then load
+        // the parent object first, so we can link them. The parent archive
+        // contains references to the DWO object we resolve later in generating
+        // the source map
+        let parent = if let Some(parent) = &self.raw.dwo_parent {
+            let load_parent_section =
+                |id: gimli::SectionId| Self::load_file_section(id, parent, false);
+            Some(gimli::Dwarf::load(load_parent_section)?)
+        } else {
+            None
+        };
+        let parent = parent.as_ref();
+
+        // This is the target object binary we are generating the sourcemap for
+        let load_section =
+            |id: gimli::SectionId| Self::load_file_section(id, &self.raw.binary, parent.is_some());
+
+        let mut dwarf = gimli::Dwarf::load(load_section)?;
+
+        if parent.is_some() {
+            if let Some(parent) = parent {
+                dwarf.make_dwo(parent);
             } else {
-                None
-            };
-            let parent = parent.as_ref();
-
-            // This is the target object binary we are generating the sourcemap for
-            let load_section = |id: gimli::SectionId| {
-                Self::load_file_section(id, &self.raw.binary, parent.is_some())
-            };
-
-            let mut dwarf = gimli::Dwarf::load(load_section)?;
-
-            if parent.is_some() {
-                if let Some(parent) = parent {
-                    dwarf.make_dwo(parent);
-                } else {
-                    dwarf.file_type = gimli::DwarfFileType::Dwo;
-                }
+                dwarf.file_type = gimli::DwarfFileType::Dwo;
             }
-
-            // Load optional supplemental file
-            if let Some(sup) = &self.raw.sup_file {
-                let load_sup_section = |id: gimli::SectionId| {
-                    // Note: we really only need the `.debug_str` section,
-                    // but for now we load them all.
-                    Self::load_file_section(id, sup, false)
-                };
-                dwarf.load_sup(load_sup_section)?;
-            }
-
-            dwarf.populate_abbreviations_cache(gimli::AbbreviationsCacheStrategy::All);
-
-            self.dwarf.set(dwarf).ok();
         }
 
-        Ok(self.dwarf.get().unwrap())
+        // Load optional supplemental file
+        if let Some(sup) = &self.raw.sup_file {
+            let load_sup_section = |id: gimli::SectionId| {
+                // Note: we really only need the `.debug_str` section,
+                // but for now we load them all.
+                Self::load_file_section(id, sup, false)
+            };
+            dwarf.load_sup(load_sup_section)?;
+        }
+
+        dwarf.populate_abbreviations_cache(gimli::AbbreviationsCacheStrategy::All);
+
+        Ok(self.dwarf.get_or_init(|| dwarf))
     }
 
     ///
