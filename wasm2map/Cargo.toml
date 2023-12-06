@@ -16,7 +16,8 @@ license = "MIT OR Apache-2.0"
 [lib]
 
 [features]
-default = ["memmap2"]
+default = ["memmap2", "loader"]
+loader = []
 
 [dependencies.gimli]
 version = "0.28.1"
@@ -24,7 +25,7 @@ default-features = false
 features = ["read", "endian-reader"]
 
 [dependencies.memmap2]
-version = "~0.5.10"
+version = "~0.9.0"
 default-features = false
 optional = true
 

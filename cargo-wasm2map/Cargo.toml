@@ -14,9 +14,12 @@ rust-version = "1.64.0"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-wasm2map = { path = "../wasm2map" }
 # For -Zminimal-versions
 proc-macro2 = ">= 1.0.60"
+
+[dependencies.wasm2map]
+path = "../wasm2map"
+features = ["memmap2", "loader"]
 
 [dependencies.clap]
 version = "4.3.10"
