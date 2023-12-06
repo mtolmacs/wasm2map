@@ -71,20 +71,20 @@ where
             // contains references to the DWO object we resolve later in generating
             // the source map
             let parent = if let Some(parent) = &self.raw.dwo_parent {
-                let mut load_parent_section =
+                let load_parent_section =
                     |id: gimli::SectionId| Self::load_file_section(id, parent, false);
-                Some(gimli::Dwarf::load(&mut load_parent_section)?)
+                Some(gimli::Dwarf::load(load_parent_section)?)
             } else {
                 None
             };
             let parent = parent.as_ref();
 
             // This is the target object binary we are generating the sourcemap for
-            let mut load_section = |id: gimli::SectionId| {
+            let load_section = |id: gimli::SectionId| {
                 Self::load_file_section(id, &self.raw.binary, parent.is_some())
             };
 
-            let mut dwarf = gimli::Dwarf::load(&mut load_section)?;
+            let mut dwarf = gimli::Dwarf::load(load_section)?;
 
             if parent.is_some() {
                 if let Some(parent) = parent {
@@ -96,12 +96,12 @@ where
 
             // Load optional supplemental file
             if let Some(sup) = &self.raw.sup_file {
-                let mut load_sup_section = |id: gimli::SectionId| {
+                let load_sup_section = |id: gimli::SectionId| {
                     // Note: we really only need the `.debug_str` section,
                     // but for now we load them all.
                     Self::load_file_section(id, sup, false)
                 };
-                dwarf.load_sup(&mut load_sup_section)?;
+                dwarf.load_sup(load_sup_section)?;
             }
 
             dwarf.populate_abbreviations_cache(gimli::AbbreviationsCacheStrategy::All);
