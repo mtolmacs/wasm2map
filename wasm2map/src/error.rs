@@ -54,6 +54,12 @@ impl From<String> for Error {
     }
 }
 
+impl From<Error> for String {
+    fn from(value: Error) -> Self {
+        value.to_string()
+    }
+}
+
 impl From<std::num::TryFromIntError> for Error {
     fn from(value: std::num::TryFromIntError) -> Self {
         Self {

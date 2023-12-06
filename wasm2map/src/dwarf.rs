@@ -1,6 +1,5 @@
 use crate::{
     error::Error,
-    reader::WasmReader,
     relocate::{Relocate, RelocationMap},
 };
 use gimli::{Dwarf, EndianReader, LittleEndian, Reader};
@@ -9,7 +8,7 @@ use object::{
 };
 use std::{borrow::Cow, cell::OnceCell, rc::Rc};
 
-pub type Relocator<'a> = Relocate<EndianReader<LittleEndian, WasmReader<'a>>>;
+pub type Relocator<'a> = Relocate<EndianReader<LittleEndian, SectionReader<'a>>>;
 
 pub struct Raw<'reader, R: ReadRef<'reader>> {
     binary: File<'reader, R>,
@@ -140,7 +139,7 @@ where
             None => Cow::Owned(Vec::with_capacity(1)),
         };
 
-        let reader = gimli::EndianReader::new(WasmReader { data }, LittleEndian);
+        let reader = gimli::EndianReader::new(SectionReader { data }, LittleEndian);
         let offset = reader.offset_from(&reader);
         Ok(Relocate {
             relocations: Rc::new(relocations),
@@ -207,3 +206,23 @@ where
         Ok(relocations)
     }
 }
+
+/// We need a holder struct to own the binary data coming out of the object
+/// reader when the DWARF loader loads a section. Since the gimli::Reader trait
+/// is not implemented for Cow returned by object::File::section_by_name we
+/// need to implement it ourselves.
+#[derive(Clone, Debug)]
+pub struct SectionReader<'a> {
+    pub data: Cow<'a, [u8]>,
+}
+
+impl<'a> std::ops::Deref for SectionReader<'a> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        self.data.deref()
+    }
+}
+
+unsafe impl<'a> gimli::StableDeref for SectionReader<'a> {}
+unsafe impl<'a> gimli::CloneStableDeref for SectionReader<'a> {}
