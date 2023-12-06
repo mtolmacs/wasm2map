@@ -1,7 +1,5 @@
-use crate::{
-    error::Error,
-    relocate::{Relocate, RelocationMap},
-};
+use super::relocate::{Relocate, RelocationMap};
+use crate::error::Error;
 use gimli::{Dwarf, EndianReader, LittleEndian, Reader};
 use object::{
     File, Object, ObjectSection, ObjectSymbol, ReadRef, RelocationKind, RelocationTarget, Section,

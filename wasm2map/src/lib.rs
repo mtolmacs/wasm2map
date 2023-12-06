@@ -16,16 +16,13 @@
 
 mod dwarf;
 mod error;
-mod json;
 #[cfg(feature = "loader")]
 mod loader;
-mod relocate;
 // #[cfg(test)]
 // mod test;
-mod vlq;
 
 use dwarf::{DwarfReader, Raw};
-pub use error::Error;
+use error::Error;
 use gimli::{self, Reader};
 #[cfg(feature = "loader")]
 pub use loader::WasmLoader;
