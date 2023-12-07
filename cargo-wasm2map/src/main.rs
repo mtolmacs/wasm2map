@@ -105,10 +105,13 @@ fn main() -> Result<(), String> {
     let reader = WasmLoader::from_path(&args.path).map_err(|err| err.to_string())?;
 
     // Parse the DWARF code section
-    let mut wasm = Wasm::new(&reader, None, None, None).map_err(|err| err.to_string())?;
+    let mut wasm = Wasm::new(&reader, None, None).map_err(|err| err.to_string())?;
 
     // Generate the source map JSON for the loaded WASM
-    let sourcemap = wasm.build(args.bundle_sources)?;
+    let sourcemap = wasm.build(
+        args.bundle_sources,
+        Some(map.file_name().unwrap().to_str().unwrap()),
+    )?;
 
     // Dump JSON to the map file
     fs::write(&map, sourcemap).map_err(|err| err.to_string())?;

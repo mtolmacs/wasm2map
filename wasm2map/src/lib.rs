@@ -21,44 +21,79 @@ mod loader;
 // #[cfg(test)]
 // mod test;
 
-use dwarf::{DwarfReader, Raw};
+use dwarf::DwarfReader;
 use error::Error;
 use gimli::{self, Reader};
 #[cfg(feature = "loader")]
 pub use loader::WasmLoader;
 pub use object::ReadRef;
-use object::{self};
+use object::{self, File};
 use sourcemap::SourceMapBuilder;
-use std::str;
+use std::{cell::OnceCell, str};
 
 ///
 pub struct Wasm<'wasm, R: ReadRef<'wasm>> {
-    dwarf: DwarfReader<'wasm, R>,
+    binary: File<'wasm, R>,
+    dwo_parent: Option<File<'wasm, R>>,
+    sup_file: Option<File<'wasm, R>>,
+    dwarf: OnceCell<DwarfReader<'wasm, R>>,
 }
 
-impl<'wasm, R: ReadRef<'wasm> + 'wasm> Wasm<'wasm, R> {
+impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
     ///
     ///
     ///
-    pub fn new(
-        binary: R,
-        name: Option<&str>,
-        dwo_parent: Option<R>,
-        sup_file: Option<R>,
-    ) -> Result<Self, Error> {
+    pub fn new(binary: R, dwo_parent: Option<R>, sup_file: Option<R>) -> Result<Self, Error> {
         Ok(Self {
-            dwarf: DwarfReader::new(Raw::new(binary, dwo_parent, sup_file)?),
+            binary: match File::parse(binary)? {
+                file @ File::Wasm(_) => Ok(file),
+                _ => Err(Error::from("Object does not represent a WASM file")),
+            }?,
+            dwo_parent: if let Some(dwo_parent) = dwo_parent {
+                let dwo_parent = match File::parse(dwo_parent)? {
+                    file @ File::Wasm(_) => Ok(file),
+                    _ => Err(Error::from(
+                        "DWO parent object does not represent a WASM file",
+                    )),
+                }?;
+                Some(dwo_parent)
+            } else {
+                None
+            },
+            sup_file: if let Some(sup_file) = sup_file {
+                let sup_file = match File::parse(sup_file)? {
+                    file @ File::Wasm(_) => Ok(file),
+                    _ => Err(Error::from(
+                        "Supplemental file does not represent a WASM file",
+                    )),
+                }?;
+                Some(sup_file)
+            } else {
+                None
+            },
+            dwarf: OnceCell::new(),
         })
     }
 
     ///
     ///
     ///
-    pub fn build(&'wasm self, bundle_sources: bool) -> Result<String, Error> {
+    pub fn build(&'wasm self, bundle_sources: bool, name: Option<&str>) -> Result<String, Error> {
+        let dwarf = self
+            .dwarf
+            .get_or_init(|| {
+                DwarfReader::new(
+                    &self.binary,
+                    self.dwo_parent.as_ref(),
+                    self.sup_file.as_ref(),
+                )
+            })
+            .get()?;
+
         let mut mapper = SourceMapBuilder::new(None);
-        let mut iter = self.dwarf.get()?.units();
+        let mut iter = dwarf.units();
         while let Some(header) = iter.next()? {
-            let unit = match self.dwarf.get()?.unit(header) {
+            let unit = match dwarf.unit(header) {
                 Ok(unit) => unit,
                 Err(_) => continue,
             };
@@ -78,7 +113,7 @@ impl<'wasm, R: ReadRef<'wasm> + 'wasm> Wasm<'wasm, R> {
                     };
                     let file = match row.file(line_header) {
                         Some(file) => {
-                            let reader = self.dwarf.get()?.attr_string(&unit, file.path_name())?;
+                            let reader = dwarf.attr_string(&unit, file.path_name())?;
                             let file_name = reader.to_string_lossy()?;
                             let sid = mapper.add_source(file_name.as_ref());
                             Some(sid)
