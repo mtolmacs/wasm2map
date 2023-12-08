@@ -29,7 +29,7 @@ pub use loader::WasmLoader;
 pub use object::ReadRef;
 use object::{self, File};
 use sourcemap::SourceMapBuilder;
-use std::{cell::OnceCell, str};
+use std::{borrow::Cow, cell::OnceCell, str};
 
 ///
 pub struct Wasm<'wasm, R: ReadRef<'wasm>> {
@@ -101,7 +101,7 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                 //let header = program.header();
                 //let base = if header.version() >= 5 { 0 } else { 1 };
                 //header.directory(directory)
-                let mut rows = program.rows();
+                let mut rows = program.clone().rows();
                 while let Some((line_header, row)) = rows.next_row()? {
                     let line = match row.line() {
                         Some(line) => line.get(),
@@ -113,8 +113,19 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                     };
                     let file = match row.file(line_header) {
                         Some(file) => {
-                            let reader = dwarf.attr_string(&unit, file.path_name())?;
-                            let file_name = reader.to_string_lossy()?;
+                            let mut file_name = dwarf
+                                .attr_string(&unit, file.path_name())?
+                                .to_string_lossy()?
+                                .to_string();
+                            if let Some(directory_attr) = file.directory(program.header()) {
+                                if let Ok(directory) = dwarf.attr_string(&unit, directory_attr) {
+                                    if let Ok(directory) = directory.to_string_lossy() {
+                                        let mut directory = directory.to_string();
+                                        directory.push('/');
+                                        file_name.insert_str(0, &directory);
+                                    }
+                                }
+                            }
                             let sid = mapper.add_source(file_name.as_ref());
                             Some(sid)
                         }
