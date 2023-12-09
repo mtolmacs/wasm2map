@@ -18,8 +18,8 @@ mod dwarf;
 mod error;
 #[cfg(feature = "loader")]
 mod loader;
-// #[cfg(test)]
-// mod test;
+#[cfg(test)]
+mod test;
 
 use dwarf::DwarfReader;
 use error::Error;
