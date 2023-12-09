@@ -29,7 +29,9 @@ pub use loader::WasmLoader;
 pub use object::ReadRef;
 use object::{self, File};
 use sourcemap::SourceMapBuilder;
-use std::{borrow::Cow, cell::OnceCell, str};
+use std::{cell::OnceCell, str};
+
+type Entry = (u32, u32, u32, u32, Option<u32>, Option<u32>);
 
 ///
 pub struct Wasm<'wasm, R: ReadRef<'wasm>> {
@@ -79,6 +81,9 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
     ///
     ///
     pub fn build(&'wasm self, bundle_sources: bool, name: Option<&str>) -> Result<String, Error> {
+        let mut entries: Vec<Entry> = Vec::new();
+        let mut mapper = SourceMapBuilder::new(None);
+
         let dwarf = self
             .dwarf
             .get_or_init(|| {
@@ -90,7 +95,6 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
             })
             .get()?;
 
-        let mut mapper = SourceMapBuilder::new(None);
         let mut iter = dwarf.units();
         while let Some(header) = iter.next()? {
             let unit = match dwarf.unit(header) {
@@ -105,12 +109,13 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                 while let Some((line_header, row)) = rows.next_row()? {
                     let line = match row.line() {
                         Some(line) => line.get(),
-                        None => 0,
+                        None => continue,
                     };
                     let column = match row.column() {
                         gimli::ColumnType::Column(column) => column.get(),
-                        gimli::ColumnType::LeftEdge => 0,
+                        gimli::ColumnType::LeftEdge => 1,
                     };
+                    let mut address = row.address().try_into()?;
                     let file = match row.file(line_header) {
                         Some(file) => {
                             let mut file_name = dwarf
@@ -134,19 +139,33 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
 
                     // TODO: Bundle sources?
 
-                    mapper.add_raw(
-                        1,
-                        row.address().try_into()?,
+                    if row.end_sequence() {
+                        address -= 1;
+                        let last = entries.last().ok_or("Empty DWARF program sequence")?;
+                        if last.0 == address {
+                            // TODO last entry has the same address, reusing
+                            continue;
+                        }
+                    }
+
+                    entries.push((
+                        column.try_into()?,
+                        address,
                         line.try_into()?,
                         column.try_into()?,
                         file,
                         None, // TODO: Look up name
-                    );
-
-                    //if row.end_sequence() {}
+                    ));
                 }
             }
         }
+
+        entries.sort_by(|left, right| left.0.cmp(&right.0));
+        entries
+            .into_iter()
+            .for_each(|(dst_line, dst_col, src_line, src_col, source, name)| {
+                mapper.add_raw(dst_line, dst_col, src_line, src_col, source, name);
+            });
 
         let mut buf: Vec<u8> = Vec::new();
         mapper.into_sourcemap().to_writer(&mut buf).unwrap();
