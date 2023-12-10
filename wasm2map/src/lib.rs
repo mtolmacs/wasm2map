@@ -113,7 +113,7 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                     };
                     let column = match row.column() {
                         gimli::ColumnType::Column(column) => column.get(),
-                        gimli::ColumnType::LeftEdge => 1,
+                        gimli::ColumnType::LeftEdge => 0,
                     };
                     let mut address = row.address().try_into()?;
                     let file = match row.file(line_header) {
