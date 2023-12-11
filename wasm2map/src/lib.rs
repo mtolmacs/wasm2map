@@ -26,10 +26,11 @@ use error::Error;
 use gimli::{self, Reader};
 #[cfg(feature = "loader")]
 pub use loader::WasmLoader;
+use normalize_path::NormalizePath;
 pub use object::ReadRef;
 use object::{self, File, Object, ObjectSection, SectionIndex};
 use sourcemap::SourceMapBuilder;
-use std::{cell::OnceCell, str};
+use std::{cell::OnceCell, path::PathBuf, str};
 
 type Entry = (u32, u32, u32, u32, Option<u32>, Option<u32>, bool);
 
@@ -127,20 +128,29 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                     address += self.offset;
                     let file = match row.file(line_header) {
                         Some(file) => {
-                            let mut file_name = dwarf
-                                .attr_string(&unit, file.path_name())?
-                                .to_string_lossy()?
-                                .to_string();
+                            let mut file_name = PathBuf::from(
+                                dwarf
+                                    .attr_string(&unit, file.path_name())?
+                                    .to_string_lossy()?
+                                    .as_ref(),
+                            );
+
                             if let Some(directory_attr) = file.directory(program.header()) {
                                 if let Ok(directory) = dwarf.attr_string(&unit, directory_attr) {
                                     if let Ok(directory) = directory.to_string_lossy() {
-                                        let mut directory = directory.to_string();
-                                        directory.push('/');
-                                        file_name.insert_str(0, &directory);
+                                        file_name =
+                                            PathBuf::from(directory.as_ref()).join(file_name);
                                     }
                                 }
                             }
-                            let sid = mapper.add_source(file_name.as_ref());
+                            let sid = mapper.add_source(
+                                file_name
+                                    .normalize()
+                                    .to_str()
+                                    .ok_or("Error converting path to string")?
+                                    .replace('\\', "/")
+                                    .as_str(),
+                            );
                             Some(sid)
                         }
                         None => None,

@@ -274,6 +274,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "normalize-path"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5438dd2b2ff4c6df6e1ce22d825ed2fa93ee2922235cc45186991717f0a892d"
+
+[[package]]
 name = "object"
 version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -591,13 +597,14 @@ checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
 name = "wasm2map"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cfg-if",
  "flate2",
  "gcc",
  "gimli",
  "memmap2",
+ "normalize-path",
  "object",
  "rand",
  "serde_json",

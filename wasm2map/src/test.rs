@@ -84,8 +84,9 @@ fn position_retrieval_works() {
     let mut entry: u32 = 0;
     golden.tokens().for_each(|golden_token| {
         entry += 1;
-        let col = golden_token.get_dst_col();
+        let col = golden_token.get_dst_col() + 1;
         let line = golden_token.get_dst_line();
+        let golden_token = golden.lookup_token(line, col).expect("Even the golden sourcemap cannot lookup a position");
         let token = sourcemap.lookup_token(line, col).unwrap_or_else(|| {
             panic!(
                 "Position {}:{} from golden.wasm.map is not present in the generated sourcemap at position {}",

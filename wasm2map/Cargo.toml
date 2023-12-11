@@ -1,6 +1,6 @@
 [package]
 name = "wasm2map"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Mark Tolmacs <mark@lazycat.hu>"]
 description = "Generates source map for .wasm file with DWARF debug info embedded as source map."
@@ -36,6 +36,7 @@ features = [
 ]
 
 [dependencies]
+normalize-path = "0.2.1"
 serde_json = "^1"
 sourcemap = "^7.0"
 # For -Zminimal-versions
