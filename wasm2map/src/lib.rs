@@ -27,7 +27,7 @@ use gimli::{self, Reader};
 #[cfg(feature = "loader")]
 pub use loader::WasmLoader;
 pub use object::ReadRef;
-use object::{self, File};
+use object::{self, File, Object, ObjectSection, SectionIndex};
 use sourcemap::SourceMapBuilder;
 use std::{cell::OnceCell, str};
 
@@ -38,6 +38,7 @@ pub struct Wasm<'wasm, R: ReadRef<'wasm>> {
     binary: File<'wasm, R>,
     dwo_parent: Option<File<'wasm, R>>,
     sup_file: Option<File<'wasm, R>>,
+    offset: u32,
     dwarf: OnceCell<DwarfReader<'wasm, R>>,
 }
 
@@ -46,8 +47,16 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
     ///
     ///
     pub fn new(binary: R, dwo_parent: Option<R>, sup_file: Option<R>) -> Result<Self, Error> {
+        let file = File::parse(binary)?;
+        let offset = file
+            .section_by_index(SectionIndex(10))?
+            .file_range()
+            .ok_or("No size data available for the code section")?
+            .0
+            .try_into()?;
+
         Ok(Self {
-            binary: match File::parse(binary)? {
+            binary: match file {
                 file @ File::Wasm(_) => Ok(file),
                 _ => Err(Error::from("Object does not represent a WASM file")),
             }?,
@@ -73,6 +82,7 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
             } else {
                 None
             },
+            offset,
             dwarf: OnceCell::new(),
         })
     }
@@ -101,18 +111,20 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                 Ok(unit) => unit,
                 Err(_) => continue,
             };
+
             if let Some(program) = unit.line_program.clone() {
                 let mut rows = program.clone().rows();
                 while let Some((line_header, row)) = rows.next_row()? {
-                    let line = match row.line() {
-                        Some(line) => line.get(),
+                    let line: u32 = match row.line() {
+                        Some(line) => line.get().try_into()?,
                         None => continue,
                     };
-                    let column = match row.column() {
-                        gimli::ColumnType::Column(column) => column.get(),
+                    let column: u32 = match row.column() {
+                        gimli::ColumnType::Column(column) => column.get().try_into()?,
                         gimli::ColumnType::LeftEdge => 0,
                     };
                     let mut address = row.address().try_into()?;
+                    address += self.offset;
                     let file = match row.file(line_header) {
                         Some(file) => {
                             let mut file_name = dwarf
@@ -137,7 +149,7 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
 
                     // TODO: Bundle sources?
 
-                    if row.end_sequence() {
+                    if eos {
                         address -= 1;
                         let last = entries.last_mut().unwrap();
                         if last.1 == address {
@@ -148,8 +160,8 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                     entries.push((
                         0,
                         address,
-                        line.try_into()?,
-                        column.try_into()?,
+                        line.saturating_sub(1),
+                        column.saturating_sub(1),
                         file,
                         None, // TODO: Look up name
                         eos,

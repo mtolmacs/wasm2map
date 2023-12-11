@@ -144,11 +144,8 @@ where
     ) -> Result<RelocationMap, Error> {
         let mut relocations: RelocationMap = RelocationMap::new();
 
-        for (offset64, mut relocation) in section.relocations() {
-            let offset = offset64 as usize;
-            if offset as u64 != offset64 {
-                continue;
-            }
+        for (offset, mut relocation) in section.relocations() {
+            let offset = usize::try_from(offset)?;
 
             match relocation.kind() {
                 RelocationKind::Absolute => {
