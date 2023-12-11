@@ -97,10 +97,12 @@ fn position_retrieval_works() {
 
         assert!(
             left.as_str().eq(right.as_str()),
-            "[{}] {} <=> {}",
+            "[{}:{}] {} <=> {} at position {}",
+            line,
             col,
             left,
-            right
+            right,
+            entry
         );
     });
 }

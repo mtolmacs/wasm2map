@@ -31,7 +31,7 @@ use object::{self, File};
 use sourcemap::SourceMapBuilder;
 use std::{cell::OnceCell, str};
 
-type Entry = (u32, u32, u32, u32, Option<u32>, Option<u32>);
+type Entry = (u32, u32, u32, u32, Option<u32>, Option<u32>, bool);
 
 ///
 pub struct Wasm<'wasm, R: ReadRef<'wasm>> {
@@ -102,9 +102,6 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                 Err(_) => continue,
             };
             if let Some(program) = unit.line_program.clone() {
-                //let header = program.header();
-                //let base = if header.version() >= 5 { 0 } else { 1 };
-                //header.directory(directory)
                 let mut rows = program.clone().rows();
                 while let Some((line_header, row)) = rows.next_row()? {
                     let line = match row.line() {
@@ -136,40 +133,68 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                         }
                         None => None,
                     };
+                    let eos = row.end_sequence();
 
                     // TODO: Bundle sources?
 
                     if row.end_sequence() {
                         address -= 1;
-                        let last = entries.last().ok_or("Empty DWARF program sequence")?;
-                        if last.0 == address {
-                            // TODO last entry has the same address, reusing
-                            continue;
+                        let last = entries.last_mut().unwrap();
+                        if last.1 == address {
+                            last.6 = true;
                         }
                     }
 
                     entries.push((
-                        column.try_into()?,
+                        0,
                         address,
                         line.try_into()?,
                         column.try_into()?,
                         file,
                         None, // TODO: Look up name
+                        eos,
                     ));
                 }
             }
         }
 
-        entries.sort_by(|left, right| left.0.cmp(&right.0));
-        entries
-            .into_iter()
-            .for_each(|(dst_line, dst_col, src_line, src_col, source, name)| {
+        //Self::remove_dead_entries(&mut entries);
+        entries.into_iter().filter(|item| !item.6).for_each(
+            |(dst_line, dst_col, src_line, src_col, source, name, _)| {
                 mapper.add_raw(dst_line, dst_col, src_line, src_col, source, name);
-            });
+            },
+        );
 
         let mut buf: Vec<u8> = Vec::new();
         mapper.into_sourcemap().to_writer(&mut buf).unwrap();
 
         Ok(String::from_utf8(buf).unwrap())
+    }
+
+    ///
+    ///
+    fn remove_dead_entries(entries: &mut Vec<Entry>) {
+        let mut block_start = 0;
+        let mut cur_entry = 0;
+        while cur_entry < entries.len() {
+            if !entries.get(cur_entry).unwrap().6 {
+                cur_entry += 1;
+            } else {
+                let fn_start = entries.get(block_start).unwrap().1;
+                let fn_ptr = entries.get(cur_entry).unwrap().1;
+                let fn_size_length = (fn_ptr - fn_start + 1).ilog(128) + 1;
+                let min_live_offset = 1 + fn_size_length;
+                if fn_start < min_live_offset {
+                    cur_entry += 1;
+                    entries.as_mut_slice()[block_start..cur_entry]
+                        .iter_mut()
+                        .for_each(|e| e.6 = true);
+                    cur_entry += 1;
+                    continue;
+                }
+                cur_entry += 1;
+                block_start = cur_entry;
+            }
+        }
     }
 }
