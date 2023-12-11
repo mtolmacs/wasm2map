@@ -90,7 +90,7 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
     ///
     ///
     ///
-    pub fn build(&'wasm self, bundle_sources: bool, name: Option<&str>) -> Result<String, Error> {
+    pub fn build(&'wasm self, _bundle_sources: bool, _name: Option<&str>) -> Result<String, Error> {
         let mut entries: Vec<Entry> = Vec::new();
         let mut mapper = SourceMapBuilder::new(None);
 
@@ -171,11 +171,13 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
         }
 
         //Self::remove_dead_entries(&mut entries);
-        entries.into_iter().filter(|item| !item.6).for_each(
-            |(dst_line, dst_col, src_line, src_col, source, name, _)| {
+        entries.sort_by(|left, right| left.1.cmp(&right.1));
+        entries
+            .into_iter()
+            //.filter(|item| !item.6)
+            .for_each(|(dst_line, dst_col, src_line, src_col, source, name, _)| {
                 mapper.add_raw(dst_line, dst_col, src_line, src_col, source, name);
-            },
-        );
+            });
 
         let mut buf: Vec<u8> = Vec::new();
         mapper.into_sourcemap().to_writer(&mut buf).unwrap();
@@ -185,7 +187,7 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
 
     ///
     ///
-    fn remove_dead_entries(entries: &mut Vec<Entry>) {
+    fn _remove_dead_entries(entries: &mut Vec<Entry>) {
         let mut block_start = 0;
         let mut cur_entry = 0;
         while cur_entry < entries.len() {
