@@ -22,15 +22,17 @@ mod loader;
 mod test;
 
 use dwarf::DwarfReader;
-use error::Error;
+use error::InternalError;
 use gimli::{self, Reader};
 #[cfg(feature = "loader")]
-pub use loader::WasmLoader;
 use normalize_path::NormalizePath;
-pub use object::ReadRef;
 use object::{self, File, Object, ObjectSection, SectionIndex};
 use sourcemap::SourceMapBuilder;
 use std::{cell::OnceCell, path::PathBuf, str};
+
+pub use error::Error;
+pub use loader::WasmLoader;
+pub use object::ReadRef;
 
 type Entry = (u32, u32, u32, u32, Option<u32>, Option<u32>, bool);
 
@@ -52,20 +54,25 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
         let offset = file
             .section_by_index(SectionIndex(10))?
             .file_range()
-            .ok_or("No size data available for the code section")?
+            .ok_or(InternalError::Generic(
+                "The code section in the WASM file does not contain a size parameter",
+            ))?
             .0
-            .try_into()?;
+            .try_into()
+            .map_err(InternalError::from)?;
 
         Ok(Self {
             binary: match file {
                 file @ File::Wasm(_) => Ok(file),
-                _ => Err(Error::from("Object does not represent a WASM file")),
+                _ => Err(InternalError::Generic(
+                    "Object does not represent a WASM file",
+                )),
             }?,
             dwo_parent: if let Some(dwo_parent) = dwo_parent {
                 let dwo_parent = match File::parse(dwo_parent)? {
                     file @ File::Wasm(_) => Ok(file),
-                    _ => Err(Error::from(
-                        "DWO parent object does not represent a WASM file",
+                    _ => Err(InternalError::Generic(
+                        "DWO parent file is not connected to a WASM file",
                     )),
                 }?;
                 Some(dwo_parent)
@@ -75,8 +82,8 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
             sup_file: if let Some(sup_file) = sup_file {
                 let sup_file = match File::parse(sup_file)? {
                     file @ File::Wasm(_) => Ok(file),
-                    _ => Err(Error::from(
-                        "Supplemental file does not represent a WASM file",
+                    _ => Err(InternalError::Generic(
+                        "Supplemental file is not connected to a WASM file",
                     )),
                 }?;
                 Some(sup_file)
@@ -117,14 +124,16 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                 let mut rows = program.clone().rows();
                 while let Some((line_header, row)) = rows.next_row()? {
                     let line: u32 = match row.line() {
-                        Some(line) => line.get().try_into()?,
+                        Some(line) => line.get().try_into().map_err(InternalError::from)?,
                         None => continue,
                     };
                     let column: u32 = match row.column() {
-                        gimli::ColumnType::Column(column) => column.get().try_into()?,
+                        gimli::ColumnType::Column(column) => {
+                            column.get().try_into().map_err(InternalError::from)?
+                        }
                         gimli::ColumnType::LeftEdge => 0,
                     };
-                    let mut address = row.address().try_into()?;
+                    let mut address = row.address().try_into().map_err(InternalError::from)?;
                     address += self.offset;
                     let file = match row.file(line_header) {
                         Some(file) => {
@@ -147,7 +156,9 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                                 file_name
                                     .normalize()
                                     .to_str()
-                                    .ok_or("Error converting path to string")?
+                                    .ok_or(InternalError::Generic(
+                                        "Error converting source file path to string",
+                                    ))?
                                     .replace('\\', "/")
                                     .as_str(),
                             );

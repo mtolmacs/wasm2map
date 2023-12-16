@@ -1,69 +1,42 @@
-use std::fmt::Display;
+use std::{
+    fmt::{Debug, Display},
+    num::TryFromIntError,
+};
 
-/// Common error type for the crate
-#[derive(Debug)]
-pub struct Error {
-    msg: String,
+/// Common public error type for the library which is exported from the crate
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub enum Error {
+    /// Signals an issue with the WASM object file structure, segments or reading
+    Object {
+        #[from]
+        source: object::Error,
+    },
+    /// Signals an issue with the DWARF data structures in the object file
+    /// or parsing of the DWARF data
+    Dwarf {
+        #[from]
+        source: gimli::Error,
+    },
+    /// Internal error which shouldn't ever happen. Signals a programming error
+    /// with this lib or the downstream dependencies, but panicking in libraries
+    /// is not nice with the upstream implementor, so we wrap it up with this.
+    Internal {
+        #[from]
+        source: InternalError,
+    },
 }
 
-impl std::error::Error for Error {}
+/// The opaque internal error type for programming errors. Should not be exposed
+/// outside the library.
+#[derive(thiserror::Error, Debug)]
+pub enum InternalError {
+    Generic(&'static str),
+    TryFromInt(#[from] TryFromIntError),
+}
 
-impl Display for Error {
+impl Display for InternalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.msg)
-    }
-}
-
-// Implement these From<...> traits to make
-// the library codemuch more readable
-impl From<std::io::Error> for Error {
-    fn from(value: std::io::Error) -> Self {
-        Self {
-            msg: value.to_string(),
-        }
-    }
-}
-
-impl From<object::Error> for Error {
-    fn from(value: object::Error) -> Self {
-        Self {
-            msg: value.to_string(),
-        }
-    }
-}
-
-impl From<gimli::Error> for Error {
-    fn from(value: gimli::Error) -> Self {
-        Self {
-            msg: value.to_string(),
-        }
-    }
-}
-
-impl From<&str> for Error {
-    fn from(value: &str) -> Self {
-        Self {
-            msg: value.to_owned(),
-        }
-    }
-}
-
-impl From<String> for Error {
-    fn from(value: String) -> Self {
-        Self { msg: value }
-    }
-}
-
-impl From<Error> for String {
-    fn from(value: Error) -> Self {
-        value.to_string()
-    }
-}
-
-impl From<std::num::TryFromIntError> for Error {
-    fn from(value: std::num::TryFromIntError) -> Self {
-        Self {
-            msg: value.to_string(),
-        }
+        write!(f, "{}", self.to_string())
     }
 }
