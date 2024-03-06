@@ -16,13 +16,16 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 # For -Zminimal-versions
 proc-macro2 = ">= 1.0.60"
+anstyle = "<1.0.3" # MSRV 1.64 support end
+anstyle-parse = "<0.2.2" # MSRV 1.64 support end
+clap_lex = "<0.5.1" # MSRV 1.64 support end
 
 [dependencies.wasm2map]
 path = "../wasm2map"
 features = ["memmap2", "loader"]
 
 [dependencies.clap]
-version = "4.3.10"
+version = ">=4.3.11, <4.3.24"
 features = ["derive"]
 
 [badges]

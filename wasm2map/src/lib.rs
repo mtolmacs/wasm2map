@@ -22,17 +22,19 @@ mod loader;
 mod test;
 
 use dwarf::DwarfReader;
+pub use error::Error;
 use error::InternalError;
 use gimli::{self, Reader};
+#[rustversion::before(1.65)]
+use ilog::IntLog;
 #[cfg(feature = "loader")]
-use normalize_path::NormalizePath;
-use object::{self, File, Object, ObjectSection, SectionIndex};
-use sourcemap::SourceMapBuilder;
-use std::{cell::OnceCell, path::PathBuf, str};
-
-pub use error::Error;
 pub use loader::WasmLoader;
+use normalize_path::NormalizePath;
 pub use object::ReadRef;
+use object::{self, File, FileKind, Object, ObjectSection, SectionIndex};
+use once_cell::unsync::OnceCell;
+use sourcemap::SourceMapBuilder;
+use std::{path::PathBuf, str};
 
 type Entry = (u32, u32, u32, u32, Option<u32>, Option<u32>, bool);
 
@@ -62,15 +64,15 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
             .map_err(InternalError::from)?;
 
         Ok(Self {
-            binary: match file {
-                file @ File::Wasm(_) => Ok(file),
+            binary: match FileKind::parse(binary)? {
+                FileKind::Wasm => Ok(file),
                 _ => Err(InternalError::Generic(
                     "Object does not represent a WASM file".into(),
                 )),
             }?,
             dwo_parent: if let Some(dwo_parent) = dwo_parent {
-                let dwo_parent = match File::parse(dwo_parent)? {
-                    file @ File::Wasm(_) => Ok(file),
+                let dwo_parent = match FileKind::parse(dwo_parent)? {
+                    FileKind::Wasm => Ok(File::parse(dwo_parent)?),
                     _ => Err(InternalError::Generic(
                         "DWO parent file is not connected to a WASM file".into(),
                     )),
@@ -80,8 +82,8 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                 None
             },
             sup_file: if let Some(sup_file) = sup_file {
-                let sup_file = match File::parse(sup_file)? {
-                    file @ File::Wasm(_) => Ok(file),
+                let sup_file = match FileKind::parse(sup_file)? {
+                    FileKind::Wasm => Ok(File::parse(sup_file)?),
                     _ => Err(InternalError::Generic(
                         "Supplemental file is not connected to a WASM file".into(),
                     )),
@@ -231,5 +233,20 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                 block_start = cur_entry;
             }
         }
+    }
+}
+
+#[rustversion::before(1.65)]
+//#[allow(unstable_name_collisions)]
+trait PolyfillIlog {
+    fn ilog(self, base: u32) -> u32;
+}
+
+#[rustversion::before(1.65)]
+impl PolyfillIlog for u32 {
+    fn ilog(self, base: u32) -> u32 {
+        u32::try_from(self.log2() / base.log2()).expect(
+            "Invariant of logarithm with arbitrary base from u32 cannot be converted to u32",
+        )
     }
 }

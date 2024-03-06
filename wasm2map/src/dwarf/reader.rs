@@ -3,7 +3,8 @@ use gimli::{EndianReader, LittleEndian, Reader};
 use object::{
     File, Object, ObjectSection, ObjectSymbol, ReadRef, RelocationKind, RelocationTarget, Section,
 };
-use std::{borrow::Cow, cell::OnceCell, rc::Rc};
+use once_cell::unsync::OnceCell;
+use std::{borrow::Cow, rc::Rc};
 
 use super::{
     relocate::{Relocate, RelocationMap},
