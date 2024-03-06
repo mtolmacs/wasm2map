@@ -55,7 +55,7 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
             .section_by_index(SectionIndex(10))?
             .file_range()
             .ok_or(InternalError::Generic(
-                "The code section in the WASM file does not contain a size parameter",
+                "The code section in the WASM file does not contain a size parameter".into(),
             ))?
             .0
             .try_into()
@@ -65,14 +65,14 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
             binary: match file {
                 file @ File::Wasm(_) => Ok(file),
                 _ => Err(InternalError::Generic(
-                    "Object does not represent a WASM file",
+                    "Object does not represent a WASM file".into(),
                 )),
             }?,
             dwo_parent: if let Some(dwo_parent) = dwo_parent {
                 let dwo_parent = match File::parse(dwo_parent)? {
                     file @ File::Wasm(_) => Ok(file),
                     _ => Err(InternalError::Generic(
-                        "DWO parent file is not connected to a WASM file",
+                        "DWO parent file is not connected to a WASM file".into(),
                     )),
                 }?;
                 Some(dwo_parent)
@@ -83,7 +83,7 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                 let sup_file = match File::parse(sup_file)? {
                     file @ File::Wasm(_) => Ok(file),
                     _ => Err(InternalError::Generic(
-                        "Supplemental file is not connected to a WASM file",
+                        "Supplemental file is not connected to a WASM file".into(),
                     )),
                 }?;
                 Some(sup_file)
@@ -157,7 +157,7 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                                     .normalize()
                                     .to_str()
                                     .ok_or(InternalError::Generic(
-                                        "Error converting source file path to string",
+                                        "Error converting source file path to string".into(),
                                     ))?
                                     .replace('\\', "/")
                                     .as_str(),

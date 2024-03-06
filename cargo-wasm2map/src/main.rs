@@ -108,10 +108,12 @@ fn main() -> Result<(), String> {
     let wasm = Wasm::new(&reader, None, None).map_err(|err| err.to_string())?;
 
     // Generate the source map JSON for the loaded WASM
-    let sourcemap = wasm.build(
-        args.bundle_sources,
-        Some(map.file_name().unwrap().to_str().unwrap()),
-    )?;
+    let sourcemap = wasm
+        .build(
+            args.bundle_sources,
+            Some(map.file_name().unwrap().to_str().unwrap()),
+        )
+        .map_err(|err| err.to_string())?;
 
     // Dump JSON to the map file
     fs::write(&map, sourcemap).map_err(|err| err.to_string())?;

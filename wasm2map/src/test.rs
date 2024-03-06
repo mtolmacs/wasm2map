@@ -4,7 +4,7 @@
 use sourcemap::SourceMap;
 
 use crate::{Wasm, WasmLoader};
-use std::{fs, panic, path::Path};
+use std::{panic, path::Path};
 
 /// Tests the format of the sourcemap, makes sure the JSON is valid and
 /// the required keys are present, with the right type of values.

@@ -1,7 +1,7 @@
 mod relocate;
 
 use self::relocate::{Relocate, RelocationMap};
-use crate::error::Error;
+use crate::error::{Error, InternalError};
 use gimli::{EndianReader, LittleEndian, Reader};
 use object::{
     File, Object, ObjectSection, ObjectSymbol, ReadRef, RelocationKind, RelocationTarget, Section,
@@ -145,7 +145,7 @@ where
         let mut relocations: RelocationMap = RelocationMap::new();
 
         for (offset, mut relocation) in section.relocations() {
-            let offset = usize::try_from(offset)?;
+            let offset = usize::try_from(offset).map_err(InternalError::from)?;
 
             match relocation.kind() {
                 RelocationKind::Absolute => {
@@ -162,7 +162,7 @@ where
                                     section.name().unwrap(),
                                     offset
                                 );
-                                return Err(msg.into());
+                                return Err(InternalError::from(msg).into());
                             }
                         }
                     }
@@ -173,7 +173,7 @@ where
                             section.name().unwrap(),
                             offset
                         );
-                        return Err(msg.into());
+                        return Err(InternalError::from(msg).into());
                     }
                 }
                 _ => {
@@ -182,7 +182,7 @@ where
                         section.name().unwrap(),
                         offset
                     );
-                    return Err(msg.into());
+                    return Err(InternalError::from(msg).into());
                 }
             }
         }
