@@ -23,9 +23,9 @@ impl WasmLoader<File> {
 
     ///
     pub fn from_file(file: File) -> Result<Self, Error> {
-        Self {
+        Ok(Self {
             data: ReadCache::new(file),
-        }
+        })
     }
 }
 
