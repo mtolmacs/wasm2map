@@ -46,9 +46,6 @@ let mapper = WASM::load("/path/to/the/file.wasm");
 }
 ```
 
-# Current limitations
-- It does not bundle the source code in the sourcemap currently, so source browsing will not work in the browser
-
 # Contribution
 Your contributions are welcome, especially bug reports and testing on various platforms. Feel free to open a PR if you can contribute a fix.
 
