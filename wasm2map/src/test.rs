@@ -1,38 +1,128 @@
-use std::{fs, ops::Deref, path::PathBuf};
+// TODO: Test relocation
+// TODO: Test DWO?
 
-use crate::{error::Error, json::encode, vlq, CodePoint, WASM};
+use sourcemap::SourceMap;
 
-// Consts needed to build golden versions of the binary WASM module section.
-// See wasm2map::WASM::patch() doc-comment for details.
-const WASM_CUSTOM_SECTION_ID: u8 = 0;
-const WASM_SOURCEMAPPINGURL_SECTION_NAME: &[u8] = b"sourceMappingURL";
+use crate::{Loader, Wasm};
+use std::{panic, path::Path};
 
-// TODO: Test sourcemap size load
-// TODO: Test sourcemap generation
-
+/// Tests the format of the sourcemap, makes sure the JSON is valid and
+/// the required keys are present, with the right type of values.
 #[test]
-fn can_create_sourcemap() {
-    testutils::run_test(|out| {
-        if let Ok(mapper) = WASM::load(out) {
-            let sourcemap = mapper.map_v3(false);
+fn can_create_valid_sourcemap_format() {
+    panic::catch_unwind(|| {
+        let path = testutils::get_workspace_dir().join("wasm2map/test/assets/golden.wasm");
+        let loader = Loader::from_path(path).expect("Could not load WASM file");
+        let wasm = Wasm::new(&loader, None, None).expect("Could not load WASM sections");
+        if let Ok(sourcemap) = wasm.build(false, None) {
+            let parsed = serde_json::from_str::<serde_json::Value>(sourcemap.as_str())
+                .expect("Sourcemap is not a valid JSON file");
+            let json = parsed.as_object().expect("Sourcemap is not a JSON object");
 
-            assert!(sourcemap.starts_with(r#"{"version":3,"names":[],"sources":["#));
-            assert!(sourcemap.ends_with(r#""}"#));
+            let version = json
+                .get("version")
+                .expect("Sourcemap JSON object has no requied version key")
+                .as_i64()
+                .expect("Sourcemap JSON version value is not an integer");
+            assert!(version == 3);
+
+            let names = json
+                .get("names")
+                .expect("Sourcemap JSON has no names key")
+                .as_array()
+                .expect("Sourcemap JSON key names is not an array");
+            assert!(names.is_empty());
+
+            let sources = json
+                .get("sources")
+                .expect("Sourcemap JSON object has no sources key")
+                .as_array()
+                .expect("Sourcemap JSON sources value is not an array");
+            assert!(!sources.is_empty());
+            sources.iter().for_each(|value| {
+                let path = Path::new(
+                    value
+                        .as_str()
+                        .expect("Sourcemap JSON sources item is not a string"),
+                );
+                assert!(path.extension().is_some());
+            });
+
+            let mappings = json
+                .get("mappings")
+                .expect("Sourcemap JSON object has no mappings key")
+                .as_str()
+                .expect("Sourcemap JSON key mappings is not a string");
+            assert!(!mappings.is_empty());
         } else {
-            unreachable!()
+            unreachable!("Could not load WASM binary")
         }
+    })
+    .expect("Cannot create a valid sourcemap format");
+}
+
+/// Check the address resolution in the generated sourcemap against a known good
+/// example
+#[test]
+fn position_retrieval_works() {
+    let golden = {
+        let path = testutils::get_workspace_dir().join("wasm2map/test/assets/golden.wasm.map");
+        let bytes = std::fs::read(path).expect("Could not load golden sourcemap");
+        SourceMap::from_slice(&bytes).expect("Malformed golden sourcemap file")
+    };
+
+    let path = testutils::get_workspace_dir().join("wasm2map/test/assets/golden.wasm");
+    let loader = Loader::from_path(path).expect("Could not load WASM file");
+    let wasm = Wasm::new(&loader, None, None).expect("Could not load WASM sections");
+    let sourcemap = SourceMap::from_slice(
+        wasm.build(false, None)
+            .expect("Failed to build sourcemap for golden WASM")
+            .as_bytes(),
+    )
+    .expect("Generated sourcemap is not valid");
+
+    let mut entry: u32 = 0;
+    golden.tokens().for_each(|golden_token| {
+        entry += 1;
+        let col = golden_token.get_dst_col() + 1;
+        let line = golden_token.get_dst_line();
+        let golden_token = golden.lookup_token(line, col).expect("Even the golden sourcemap cannot lookup a position");
+        let token = sourcemap.lookup_token(line, col).unwrap_or_else(|| {
+            panic!(
+                "Position {}:{} from golden.wasm.map is not present in the generated sourcemap at position {}",
+                line, col, entry
+            )
+        });
+        let left = golden_token.to_string();
+        let right = token.to_string();
+
+        assert!(
+            left.as_str().eq(right.as_str()),
+            "[{}:{}] {} <=> {} at position {}",
+            line,
+            col,
+            left,
+            right,
+            entry
+        );
     });
 }
 
+/// The Rust library core files are included in DWARF as relative file paths.
+/// This test checks if some of the Rust core files are included in the sources
+/// list with some leading parent directories, meaning the relative paths in
+/// DWARF are resolved.
 #[test]
 fn relative_paths_are_considered() {
     testutils::run_test(|out| {
-        if let Ok(mapper) = WASM::load(out) {
-            let sourcemap = mapper.map_v3(false);
+        if let Ok(loader) = Loader::from_path(out) {
+            let sourcemap = Wasm::new(&loader, None, None)
+                .expect("Could not load WASM sections from test build output")
+                .build(false, None)
+                .expect("Failed to build sourcemap from test build output");
 
-            // Any fixed relative path should have at least a `/` beforehand.
-            assert!(sourcemap.contains("/library/core/src/any.rs"));
-            assert!(sourcemap.contains("/library/core/src/panicking.rs"));
+            assert!(sourcemap.contains("core/src/any.rs"));
+            assert!(sourcemap.contains("core/src/panicking.rs"));
         } else {
             unreachable!()
         }
@@ -40,204 +130,38 @@ fn relative_paths_are_considered() {
 }
 
 #[test]
+fn does_not_contain_absolute_paths() {
+    let workspace = testutils::get_workspace_dir().into_os_string();
+    testutils::run_test(|out| {
+        if let Ok(loader) = Loader::from_path(out) {
+            let sourcemap = Wasm::new(&loader, None, None)
+                .expect("Could not load WASM sections from test build output")
+                .build(false, None)
+                .expect("Failed to build sourcemap from test build output");
+
+            assert!(!sourcemap.contains(workspace.to_str().unwrap()));
+        } else {
+            unreachable!()
+        }
+    });
+}
+
+/// When the caller requests the bundling of source file contents, we check
+/// that the generated sourcemap has the user source code for the test code.
+#[test]
 fn can_bundle_source() {
     testutils::run_test(|out| {
-        if let Ok(mapper) = WASM::load(out) {
-            let sourcemap = mapper.map_v3(true);
+        if let Ok(loader) = Loader::from_path(out) {
+            let sourcemap = Wasm::new(&loader, None, None)
+                .expect("Could not load WASM sections from test build output")
+                .build(true, None)
+                .expect("Failed to build sourcemap from test build output");
+
             assert!(sourcemap.contains("fn main() {}"));
         } else {
             unreachable!()
         }
     });
-}
-
-#[test]
-fn can_add_and_update_sourcemap() {
-    testutils::run_test(|out| {
-        // Set up the test byte data
-        const URL: &str = "http://localhost:8080";
-        let content = [
-            &[WASM_SOURCEMAPPINGURL_SECTION_NAME.len() as u8],
-            WASM_SOURCEMAPPINGURL_SECTION_NAME,
-            &[URL.len() as u8],
-            URL.as_bytes(),
-        ]
-        .concat();
-        let section = [
-            &[WASM_CUSTOM_SECTION_ID] as &[u8],
-            &[content.len() as u8],
-            content.as_ref(),
-        ]
-        .concat();
-        const URL2: &str = "http://127.0.0.1:8080";
-        let content2 = [
-            &[WASM_SOURCEMAPPINGURL_SECTION_NAME.len() as u8],
-            WASM_SOURCEMAPPINGURL_SECTION_NAME,
-            &[URL2.len() as u8] as &[u8],
-            URL2.as_bytes(),
-        ]
-        .concat();
-        let section2 = [
-            &[WASM_CUSTOM_SECTION_ID] as &[u8],
-            &[content2.len() as u8],
-            content2.as_ref(),
-        ]
-        .concat();
-
-        let mapper = WASM::load(&out);
-        if let Ok(mut mapper) = mapper {
-            // Patch the WASM with sourceMappingURL and check if it is applied
-            // correctly
-            if let Err(error) = mapper.patch(URL) {
-                panic!("Failed to patch the WASM file the first time: {}", error);
-            }
-            {
-                let test = testutils::peek_wasm_file_end(out.clone(), section.len());
-                assert_eq!(test, section);
-            }
-
-            // Update it and check if it's still valid and not duplicated
-            if let Err(error) = mapper.patch(URL2) {
-                panic!("Failed to patch the WASM file the first time: {}", error);
-            }
-            {
-                let test =
-                    testutils::peek_wasm_file_end(out.clone(), section.len() + section2.len());
-
-                // Test if the patch just keeps adding patches or properly
-                // update the old one
-                assert_ne!(
-                    test,
-                    [section.as_ref() as &[u8], section2.as_ref()].concat()
-                );
-
-                // Test if the only sourceMappingURL is the last one we set
-                assert_eq!(test[test.len() - section2.len()..], section2);
-            }
-
-            // Attempt to patch with the last one for sanity check
-            if let Err(error) = mapper.patch(URL2) {
-                panic!("Failed to patch the WASM file the first time: {}", error);
-            }
-            {
-                // Test if WASM binary is at least structurally valid
-                let raw = fs::read(&out).expect("Cannot open the WASM file");
-                let obj = object::File::parse(raw.deref());
-                assert!(obj.is_ok());
-            }
-        } else {
-            panic!("Error loading WASM: {}", mapper.err().unwrap());
-        }
-
-        let mapper = WASM::load(&out);
-        if let Ok(mut mapper) = mapper {
-            // Attempt to patch with the last one for sanity check
-            if let Err(error) = mapper.patch(URL2) {
-                panic!("Failed to patch the WASM file the first time: {}", error);
-            }
-            {
-                // Test if WASM binary is at least structurally valid
-                let raw = fs::read(&out).expect("Cannot open the WASM file");
-                let obj = object::File::parse(raw.deref());
-                assert!(obj.is_ok());
-            }
-        } else {
-            panic!("Error loading WASM: {}", mapper.err().unwrap());
-        }
-    })
-}
-
-#[test]
-fn test_path_handles_nonexistent_wasm() {
-    testutils::run_test(|out| {
-        let mapper = WASM::load(&out);
-        if let Ok(mut mapper) = mapper {
-            // Delete the WASM file to trigger error
-            fs::remove_file(&out).ok();
-
-            // Attempt to patch with the last one for sanity check
-            let result = mapper.patch("http://127.0.0.1:8080");
-
-            assert!(result.is_err())
-        } else {
-            panic!("Error loading WASM: {}", mapper.err().unwrap());
-        }
-    });
-}
-
-#[test]
-fn test_error_types() {
-    fn errors() -> Result<(), Box<dyn std::error::Error>> {
-        let _error: crate::Error =
-            std::io::Error::new(std::io::ErrorKind::AddrInUse, "This is a test").into();
-
-        let dumbarray = Vec::<u8>::new();
-        let _error: crate::Error = match object::File::parse(dumbarray.as_slice()) {
-            Ok(_) => unreachable!(),
-            Err(err) => err.into(),
-        };
-
-        let _error: crate::Error = gimli::Error::Io.into();
-
-        let _error: crate::Error = "This is a test".into();
-
-        let _error: crate::Error = "This is a test".to_owned().into();
-
-        let num: Result<i32, std::num::TryFromIntError> = u32::MAX.try_into();
-        let _error: crate::Error = match num {
-            Ok(_) => unreachable!(),
-            Err(err) => err.into(),
-        };
-
-        Err(Box::from(_error))
-    }
-
-    let errors = errors();
-    assert!(errors.is_err());
-
-    let error: crate::Error = "This is a test".into();
-    assert_eq!(format!("{}", error), "This is a test");
-}
-
-#[test]
-fn test_numeric_encode_to_byte_sequence() {
-    assert_eq!(vlq::encode_uint_var(432), vec![176, 3])
-}
-
-#[test]
-fn test_derived_macros_present() {
-    testutils::run_test(|out| {
-        let codepoint = CodePoint {
-            path: PathBuf::new(),
-            address: 0,
-            line: 0,
-            column: 0,
-        };
-        assert!(!format!("{:#?}", codepoint).is_empty());
-        let wasm =
-            WASM::load(out).expect("Loading WASM file is unsuccessful in derived macros test");
-        assert!(!format!("{:#?}", wasm).is_empty());
-        let error = Error::from("");
-        assert!(!format!("{:#?}", error).is_empty());
-    })
-}
-
-#[test]
-fn test_json_encode() {
-    let buf = [0; 32]
-        .iter()
-        .enumerate()
-        .map(|(count, _)| u8::try_from(count).expect("Data buffer is longer than 32"))
-        .collect::<Vec<u8>>();
-    assert_eq!(
-        encode(std::str::from_utf8(buf.as_slice()).expect("Wrong test buffer data")),
-        r#"\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f"#
-    );
-    let buf2 = &[36, 35, 34, 92, 93, 94];
-    assert_eq!(
-        encode(std::str::from_utf8(buf2.as_slice()).expect("Wrong second test buffer data")),
-        r#"$#\"\\"#
-    );
 }
 
 mod testutils {
@@ -249,7 +173,7 @@ mod testutils {
 
     // Get the target dir for the project or workspace directly from cargo
     // so we can create the temporary WASM file somewhere reliable
-    pub fn get_target_dir() -> PathBuf {
+    pub fn get_workspace_dir() -> PathBuf {
         let mut out = PathBuf::new();
         let raw = Command::new("cargo")
             .args(["locate-project", "--workspace"])
@@ -271,13 +195,24 @@ mod testutils {
     //
     // NOTE: We also force the WASM32 target obviously, so the tests need that toolchain
     pub fn build_with_rustc(source: &'_ str, output: &'_ str) {
-        let mut file = get_target_dir();
+        if rustc_version::version().unwrap() != rustc_version::Version::parse("1.83.0").unwrap() {
+            panic!("Test suite is only confirmed to work on Rust 1.83.0");
+        }
+
+        let mut file = get_workspace_dir();
         file.push("target");
         file.push(format!("test{}.rs", get_thread_id()));
         std::fs::write(&file, source).unwrap();
 
         let mut rustc = Command::new("rustc")
-            .args(["--target", "wasm32-unknown-unknown", "-g", "-o", output])
+            .args([
+                "--target",
+                "wasm32-unknown-unknown",
+                //"--crate-type=cdylib",
+                "-g",
+                "-o",
+                output,
+            ])
             .arg(file)
             .stdout(Stdio::piped())
             .spawn()
@@ -290,18 +225,21 @@ mod testutils {
     // Builds a test WASM file via rustc in the target directory for the tests
     // to manipulate
     pub fn setup() -> String {
-        let mut out = get_target_dir();
+        let mut out = get_workspace_dir();
         out.push("target");
         out.push(format!("test{}.wasm", get_thread_id()));
 
-        build_with_rustc("fn main() {}", out.display().to_string().as_str());
+        build_with_rustc(
+            "#[allow(dead_code)] fn main() {}",
+            out.display().to_string().as_str(),
+        );
 
         out.to_string_lossy().to_string()
     }
 
     // Remove the test WASM at the end of each test case
     pub fn teardown() {
-        let mut target = get_target_dir();
+        let mut target = get_workspace_dir();
         target.push("target");
 
         let mut wasm = target.clone();

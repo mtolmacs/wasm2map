@@ -1,4 +1,4 @@
-msrv = "1.64.0"  # MSRV
+msrv = "1.76.0" # MSRV
 disallowed-methods = [
     { path = "std::option::Option::map_or", reason = "use `map(..).unwrap_or(..)`" },
     { path = "std::option::Option::map_or_else", reason = "use `map(..).unwrap_or_else(..)`" },

@@ -1,6 +1,6 @@
 [package]
 name = "wasm2map"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Mark Tolmacs <mark@lazycat.hu>"]
 description = "Generates source map for .wasm file with DWARF debug info embedded as source map."
@@ -10,36 +10,45 @@ repository = "https://github.com/mtolmacs/wasm2map"
 homepage = "https://github.com/mtolmacs/wasm2map"
 keywords = ["webassembly", "wasm", "debug", "sourcemap"]
 categories = ["development-tools::debugging"]
-rust-version = "1.64.0"
+rust-version = "1.76.0"
 license = "MIT OR Apache-2.0"
 
 [lib]
 
 [features]
-default = ["memmap2"]
+default = ["memmap2", "loader"]
+loader = []
 
 [dependencies.gimli]
-version = "0.27.2"
+version = "0.31.1"
 default-features = false
-features = ["read"]
+features = ["std", "read", "endian-reader"]
 
 [dependencies.memmap2]
-version = "~0.5.10"
+version = "~0.9.5"
 default-features = false
 optional = true
 
 [dependencies.object]
-version = ">= 0.31.1"
-features = [
-    "wasm"
-]
+version = ">=0.31.1"
+features = ["std", "wasm"]
 
 [dependencies]
+normalize-path = "0.2.1"
+serde_json = "^1"
+sourcemap = "^9.1"
+thiserror = ">= 1.0.7"
+rustversion = "=1.0.19"
+ilog = "=1.0.1"
 # For -Zminimal-versions
 cfg-if = ">= 0.1.5"
 rand = ">= 0.3.23"
-thiserror = ">= 1.0.7"
 flate2 = ">= 1.0.26"
+tap = ">= 1.0.1"
+unicode-id-start = ">= 1.1.0"
+
+[dev-dependencies]
+rustc_version = "*"
 
 [build-dependencies]
 # For -Zminimal-versions

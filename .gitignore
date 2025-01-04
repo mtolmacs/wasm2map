@@ -11,3 +11,6 @@ target/
 
 # Coverage report files
 lcov.info
+
+# macOS
+.DS_Store

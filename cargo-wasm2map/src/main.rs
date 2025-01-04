@@ -14,7 +14,7 @@
 
 use clap::{Args, Parser};
 use std::{fs, path::PathBuf};
-use wasm2map::WASM;
+use wasm2map::{Loader, Wasm};
 
 // Cargo commands receive the name of the subcommand as the main command
 // so we need to consume the name of our executable in order to get to the
@@ -101,11 +101,19 @@ fn main() -> Result<(), String> {
     // TODO(mtolamcs): Test the base url parameter to make sure its a valid
     // url and it also does not reference the map file
 
-    // Load the WASM file to memory and parse the DWARF code section
-    let mut wasm = WASM::load(&args.path).map_err(|err| err.to_string())?;
+    // Open the WASM file
+    let reader = Loader::from_path(&args.path).map_err(|err| err.to_string())?;
+
+    // Parse the DWARF code section
+    let wasm = Wasm::new(&reader, None, None).map_err(|err| err.to_string())?;
 
     // Generate the source map JSON for the loaded WASM
-    let sourcemap = wasm.map_v3(args.bundle_sources);
+    let sourcemap = wasm
+        .build(
+            args.bundle_sources,
+            Some(map.file_name().unwrap().to_str().unwrap()),
+        )
+        .map_err(|err| err.to_string())?;
 
     // Dump JSON to the map file
     fs::write(&map, sourcemap).map_err(|err| err.to_string())?;
@@ -113,12 +121,15 @@ fn main() -> Result<(), String> {
     // If patching is requested, then patch the WASM file at the parameter
     // with the provided source bap base url + the mapfile name
     if args.patch {
-        let url = format!(
+        let _url = format!(
             "{}/{}",
             args.base_url.unwrap().as_str(),
             map.file_name().unwrap().to_str().unwrap()
         );
-        wasm.patch(&url).map_err(|err| err.to_string())?;
+
+        // TODO: Patching
+
+        //wasm.patch(&url).map_err(|err| err.to_string())?;
     }
 
     Ok(())
