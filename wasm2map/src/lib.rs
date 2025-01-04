@@ -21,20 +21,19 @@ mod loader;
 #[cfg(test)]
 mod test;
 
-use dwarf::DwarfReader;
+use dwarf::Reader;
 pub use error::Error;
 use error::InternalError;
-use gimli::{self, Reader};
+use gimli::Reader as _;
 #[rustversion::before(1.65)]
 use ilog::IntLog;
 #[cfg(feature = "loader")]
-pub use loader::WasmLoader;
+pub use loader::Loader;
 use normalize_path::NormalizePath;
 pub use object::ReadRef;
 use object::{self, File, FileKind, Object, ObjectSection, SectionIndex};
-use once_cell::unsync::OnceCell;
 use sourcemap::SourceMapBuilder;
-use std::{path::PathBuf, str};
+use std::{cell::OnceCell, path::PathBuf, str};
 
 type Entry = (u32, u32, u32, u32, Option<u32>, Option<u32>, bool);
 
@@ -44,7 +43,7 @@ pub struct Wasm<'wasm, R: ReadRef<'wasm>> {
     dwo_parent: Option<File<'wasm, R>>,
     sup_file: Option<File<'wasm, R>>,
     offset: u32,
-    dwarf: OnceCell<DwarfReader<'wasm, R>>,
+    dwarf: OnceCell<Reader<'wasm, R>>,
 }
 
 impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
@@ -107,7 +106,7 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
         let dwarf = self
             .dwarf
             .get_or_init(|| {
-                DwarfReader::new(
+                Reader::new(
                     &self.binary,
                     self.dwo_parent.as_ref(),
                     self.sup_file.as_ref(),
@@ -199,7 +198,7 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
             .into_iter()
             //.filter(|item| !item.6)
             .for_each(|(dst_line, dst_col, src_line, src_col, source, name, _)| {
-                mapper.add_raw(dst_line, dst_col, src_line, src_col, source, name);
+                mapper.add_raw(dst_line, dst_col, src_line, src_col, source, name, false);
             });
 
         let mut buf: Vec<u8> = Vec::new();

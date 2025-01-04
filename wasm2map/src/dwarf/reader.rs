@@ -1,39 +1,36 @@
 use crate::error::{Error, InternalError};
-use gimli::{EndianReader, LittleEndian, Reader};
-use object::{
-    File, Object, ObjectSection, ObjectSymbol, ReadRef, RelocationKind, RelocationTarget, Section,
-};
-use once_cell::unsync::OnceCell;
-use std::{borrow::Cow, rc::Rc};
+use gimli::Reader as _;
+use object::{Object, ObjectSection, ObjectSymbol};
+use std::{borrow::Cow, cell::OnceCell, rc::Rc};
 
 use super::{
     relocate::{Relocate, RelocationMap},
     section::SectionReader,
 };
 
-pub type Relocator<'a> = Relocate<EndianReader<LittleEndian, SectionReader<'a>>>;
+pub type Relocator<'a> = Relocate<gimli::EndianReader<gimli::LittleEndian, SectionReader<'a>>>;
 
 ///
 ///
 ///
-pub struct DwarfReader<'reader, R: ReadRef<'reader> + 'reader> {
-    binary: &'reader File<'reader, R>,
-    dwo_parent: Option<&'reader File<'reader, R>>,
-    sup_file: Option<&'reader File<'reader, R>>,
+pub struct Reader<'reader, R: object::ReadRef<'reader> + 'reader> {
+    binary: &'reader object::File<'reader, R>,
+    dwo_parent: Option<&'reader object::File<'reader, R>>,
+    sup_file: Option<&'reader object::File<'reader, R>>,
     dwarf: OnceCell<gimli::Dwarf<Relocator<'reader>>>,
 }
 
-impl<'reader, R> DwarfReader<'reader, R>
+impl<'reader, R> Reader<'reader, R>
 where
-    R: ReadRef<'reader> + 'reader,
+    R: object::ReadRef<'reader> + 'reader,
 {
     ///
     ///
     ///
     pub fn new(
-        binary: &'reader File<'reader, R>,
-        dwo_parent: Option<&'reader File<'reader, R>>,
-        sup_file: Option<&'reader File<'reader, R>>,
+        binary: &'reader object::File<'reader, R>,
+        dwo_parent: Option<&'reader object::File<'reader, R>>,
+        sup_file: Option<&'reader object::File<'reader, R>>,
     ) -> Self {
         Self {
             binary,
@@ -101,7 +98,7 @@ where
     ///
     fn load_file_section(
         id: gimli::SectionId,
-        object: &'reader File<'reader, R>,
+        object: &'reader object::File<'reader, R>,
         is_dwo: bool,
     ) -> Result<Relocator<'reader>, Error> {
         let mut relocations = RelocationMap::default();
@@ -124,7 +121,7 @@ where
             None => Cow::Owned(Vec::with_capacity(1)),
         };
 
-        let reader = gimli::EndianReader::new(SectionReader { data }, LittleEndian);
+        let reader = gimli::EndianReader::new(SectionReader { data }, gimli::LittleEndian);
         let offset = reader.offset_from(&reader);
         Ok(Relocate {
             relocations: Rc::new(relocations),
@@ -137,8 +134,8 @@ where
     ///
     ///
     fn get_relocations(
-        object: &File<'reader, R>,
-        section: &Section<'reader, 'reader, R>,
+        object: &object::File<'reader, R>,
+        section: &object::Section<'reader, 'reader, R>,
     ) -> Result<RelocationMap, Error> {
         let mut relocations: RelocationMap = RelocationMap::new();
 
@@ -146,8 +143,8 @@ where
             let offset = usize::try_from(offset).map_err(InternalError::from)?;
 
             match relocation.kind() {
-                RelocationKind::Absolute => {
-                    if let RelocationTarget::Symbol(symbol_idx) = relocation.target() {
+                object::RelocationKind::Absolute => {
+                    if let object::RelocationTarget::Symbol(symbol_idx) = relocation.target() {
                         match object.symbol_by_index(symbol_idx) {
                             Ok(symbol) => {
                                 let addend =

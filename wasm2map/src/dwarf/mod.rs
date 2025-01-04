@@ -2,4 +2,4 @@ mod reader;
 mod relocate;
 mod section;
 
-pub use reader::DwarfReader;
+pub use reader::Reader;

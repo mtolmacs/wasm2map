@@ -10,12 +10,12 @@ use std::{
 
 ///
 #[derive(Debug)]
-pub struct WasmLoader<R: Read + Seek> {
+pub struct Loader<R: Read + Seek> {
     data: Mmap,
     _marker: PhantomData<R>,
 }
 
-impl WasmLoader<File> {
+impl Loader<File> {
     ///
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Error> {
         let file = File::open(path)?;
@@ -35,7 +35,7 @@ impl WasmLoader<File> {
     }
 }
 
-impl<'a, R: Read + Seek> ReadRef<'a> for &'a WasmLoader<R> {
+impl<'a, R: Read + Seek> ReadRef<'a> for &'a Loader<R> {
     fn len(self) -> Result<u64, ()> {
         self.data.len().try_into().map_err(|_| ())
     }

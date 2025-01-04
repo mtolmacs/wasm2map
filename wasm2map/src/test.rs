@@ -3,7 +3,7 @@
 
 use sourcemap::SourceMap;
 
-use crate::{Wasm, WasmLoader};
+use crate::{Loader, Wasm};
 use std::{panic, path::Path};
 
 /// Tests the format of the sourcemap, makes sure the JSON is valid and
@@ -12,7 +12,7 @@ use std::{panic, path::Path};
 fn can_create_valid_sourcemap_format() {
     panic::catch_unwind(|| {
         let path = testutils::get_workspace_dir().join("wasm2map/test/assets/golden.wasm");
-        let loader = WasmLoader::from_path(path).expect("Could not load WASM file");
+        let loader = Loader::from_path(path).expect("Could not load WASM file");
         let wasm = Wasm::new(&loader, None, None).expect("Could not load WASM sections");
         if let Ok(sourcemap) = wasm.build(false, None) {
             let parsed = serde_json::from_str::<serde_json::Value>(sourcemap.as_str())
@@ -72,7 +72,7 @@ fn position_retrieval_works() {
     };
 
     let path = testutils::get_workspace_dir().join("wasm2map/test/assets/golden.wasm");
-    let loader = WasmLoader::from_path(path).expect("Could not load WASM file");
+    let loader = Loader::from_path(path).expect("Could not load WASM file");
     let wasm = Wasm::new(&loader, None, None).expect("Could not load WASM sections");
     let sourcemap = SourceMap::from_slice(
         wasm.build(false, None)

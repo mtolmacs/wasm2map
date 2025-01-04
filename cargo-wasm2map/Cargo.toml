@@ -1,6 +1,6 @@
 [package]
 name = "cargo-wasm2map"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Mark Tolmacs <mark@lazycat.hu>"]
 description = "Cargo command which generates source map for .wasm file with DWARF debug info embedded as source map."
@@ -10,22 +10,22 @@ repository = "https://github.com/mtolmacs/wasm2map"
 homepage = "https://github.com/mtolmacs/wasm2map"
 keywords = ["webassembly", "wasm", "debug", "sourcemap"]
 categories = ["command-line-utilities"]
-rust-version = "1.64.0"
+rust-version = "1.76.0"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
 # For -Zminimal-versions
 proc-macro2 = ">= 1.0.60"
-anstyle = "<1.0.3" # MSRV 1.64 support end
-anstyle-parse = "<0.2.2" # MSRV 1.64 support end
-clap_lex = "<0.5.1" # MSRV 1.64 support end
+anstyle = "^1"
+anstyle-parse = "^0.2"
+clap_lex = "0.7.4"
 
 [dependencies.wasm2map]
 path = "../wasm2map"
 features = ["memmap2", "loader"]
 
 [dependencies.clap]
-version = ">=4.3.11, <4.3.24"
+version = "4.5.3"
 features = ["derive"]
 
 [badges]
