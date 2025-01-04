@@ -44,6 +44,8 @@ ilog = "=1.0.1"
 cfg-if = ">= 0.1.5"
 rand = ">= 0.3.23"
 flate2 = ">= 1.0.26"
+tap = ">= 1.0.1"
+unicode-id-start = ">= 1.1.0"
 
 [build-dependencies]
 # For -Zminimal-versions
