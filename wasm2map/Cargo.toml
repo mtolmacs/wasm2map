@@ -30,7 +30,7 @@ default-features = false
 optional = true
 
 [dependencies.object]
-version = ">=0.31.1"       # MSRV 1.64 support ended, earlier does not qualify
+version = ">=0.31.1"
 features = ["std", "wasm"]
 
 [dependencies]
