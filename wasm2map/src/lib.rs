@@ -45,9 +45,8 @@ pub struct Wasm<'wasm, R: ReadRef<'wasm>> {
 }
 
 impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
-    ///
-    ///
-    ///
+    /// Create a new Wasm instance from a binary file and
+    /// optional DWO parent and also optional supplemental file
     pub fn new(binary: R, dwo_parent: Option<R>, sup_file: Option<R>) -> Result<Self, Error> {
         let file = File::parse(binary)?;
         let offset = file

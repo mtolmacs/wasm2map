@@ -47,6 +47,9 @@ flate2 = ">= 1.0.26"
 tap = ">= 1.0.1"
 unicode-id-start = ">= 1.1.0"
 
+[dev-dependencies]
+rustc_version = "*"
+
 [build-dependencies]
 # For -Zminimal-versions
 gcc = ">= 0.3.4"

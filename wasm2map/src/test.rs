@@ -108,6 +108,62 @@ fn position_retrieval_works() {
     });
 }
 
+/// The Rust library core files are included in DWARF as relative file paths.
+/// This test checks if some of the Rust core files are included in the sources
+/// list with some leading parent directories, meaning the relative paths in
+/// DWARF are resolved.
+#[test]
+fn relative_paths_are_considered() {
+    testutils::run_test(|out| {
+        if let Ok(loader) = Loader::from_path(out) {
+            let sourcemap = Wasm::new(&loader, None, None)
+                .expect("Could not load WASM sections from test build output")
+                .build(false, None)
+                .expect("Failed to build sourcemap from test build output");
+
+            assert!(sourcemap.contains("core/src/any.rs"));
+            assert!(sourcemap.contains("core/src/panicking.rs"));
+        } else {
+            unreachable!()
+        }
+    });
+}
+
+#[test]
+fn does_not_contain_absolute_paths() {
+    let workspace = testutils::get_workspace_dir().into_os_string();
+    testutils::run_test(|out| {
+        if let Ok(loader) = Loader::from_path(out) {
+            let sourcemap = Wasm::new(&loader, None, None)
+                .expect("Could not load WASM sections from test build output")
+                .build(false, None)
+                .expect("Failed to build sourcemap from test build output");
+
+            assert!(!sourcemap.contains(workspace.to_str().unwrap()));
+        } else {
+            unreachable!()
+        }
+    });
+}
+
+/// When the caller requests the bundling of source file contents, we check
+/// that the generated sourcemap has the user source code for the test code.
+#[test]
+fn can_bundle_source() {
+    testutils::run_test(|out| {
+        if let Ok(loader) = Loader::from_path(out) {
+            let sourcemap = Wasm::new(&loader, None, None)
+                .expect("Could not load WASM sections from test build output")
+                .build(true, None)
+                .expect("Failed to build sourcemap from test build output");
+
+            assert!(sourcemap.contains("fn main() {}"));
+        } else {
+            unreachable!()
+        }
+    });
+}
+
 mod testutils {
     use std::{
         fs, panic,
@@ -139,13 +195,24 @@ mod testutils {
     //
     // NOTE: We also force the WASM32 target obviously, so the tests need that toolchain
     pub fn build_with_rustc(source: &'_ str, output: &'_ str) {
+        if rustc_version::version().unwrap() != rustc_version::Version::parse("1.83.0").unwrap() {
+            panic!("Test suite is only confirmed to work on Rust 1.83.0");
+        }
+
         let mut file = get_workspace_dir();
         file.push("target");
         file.push(format!("test{}.rs", get_thread_id()));
         std::fs::write(&file, source).unwrap();
 
         let mut rustc = Command::new("rustc")
-            .args(["--target", "wasm32-unknown-unknown", "-g", "-o", output])
+            .args([
+                "--target",
+                "wasm32-unknown-unknown",
+                //"--crate-type=cdylib",
+                "-g",
+                "-o",
+                output,
+            ])
             .arg(file)
             .stdout(Stdio::piped())
             .spawn()
@@ -162,7 +229,10 @@ mod testutils {
         out.push("target");
         out.push(format!("test{}.wasm", get_thread_id()));
 
-        build_with_rustc("fn main() {}", out.display().to_string().as_str());
+        build_with_rustc(
+            "#[allow(dead_code)] fn main() {}",
+            out.display().to_string().as_str(),
+        );
 
         out.to_string_lossy().to_string()
     }
