@@ -94,10 +94,11 @@ jobs:
         run: cargo generate-lockfile
       - name: cargo llvm-cov
         run: cargo llvm-cov -p wasm2map --locked --all-features --lcov --output-path lcov.info
-      - name: Upload to codecov.io
-        uses: codecov/codecov-action@v3
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
         with:
-          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
   coverage-unix:
     runs-on: ubuntu-latest
     name: ubuntu / stable / coverage
@@ -117,7 +118,8 @@ jobs:
         run: cargo generate-lockfile
       - name: cargo llvm-cov
         run: cargo llvm-cov -p wasm2map --locked --all-features --lcov --output-path lcov.info
-      - name: Upload to codecov.io
-        uses: codecov/codecov-action@v3
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
         with:
-          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
