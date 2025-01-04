@@ -46,14 +46,14 @@ where
     ///
     ///
     ///
-    pub fn get(&'reader self) -> Result<&gimli::Dwarf<Relocator<'reader>>, Error> {
+    pub fn get(&'reader self) -> Result<&'reader gimli::Dwarf<Relocator<'reader>>, Error> {
         self.dwarf.get().ok_or(()).or_else(|_| self.load())
     }
 
     ///
     ///
     ///
-    fn load(&'reader self) -> Result<&gimli::Dwarf<Relocator<'reader>>, Error> {
+    fn load(&'reader self) -> Result<&'reader gimli::Dwarf<Relocator<'reader>>, Error> {
         // If the WASM debug info is in a split DWARF object (DWO), then load
         // the parent object first, so we can link them. The parent archive
         // contains references to the DWO object we resolve later in generating
