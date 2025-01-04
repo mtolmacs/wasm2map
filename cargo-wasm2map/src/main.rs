@@ -14,7 +14,7 @@
 
 use clap::{Args, Parser};
 use std::{fs, path::PathBuf};
-use wasm2map::{Wasm, Loader};
+use wasm2map::{Loader, Wasm};
 
 // Cargo commands receive the name of the subcommand as the main command
 // so we need to consume the name of our executable in order to get to the
