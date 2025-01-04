@@ -25,8 +25,6 @@ use dwarf::Reader;
 pub use error::Error;
 use error::InternalError;
 use gimli::Reader as _;
-#[rustversion::before(1.65)]
-use ilog::IntLog;
 #[cfg(feature = "loader")]
 pub use loader::Loader;
 use normalize_path::NormalizePath;
@@ -232,20 +230,5 @@ impl<'wasm, R: ReadRef<'wasm>> Wasm<'wasm, R> {
                 block_start = cur_entry;
             }
         }
-    }
-}
-
-#[rustversion::before(1.65)]
-//#[allow(unstable_name_collisions)]
-trait PolyfillIlog {
-    fn ilog(self, base: u32) -> u32;
-}
-
-#[rustversion::before(1.65)]
-impl PolyfillIlog for u32 {
-    fn ilog(self, base: u32) -> u32 {
-        u32::try_from(self.log2() / base.log2()).expect(
-            "Invariant of logarithm with arbitrary base from u32 cannot be converted to u32",
-        )
     }
 }
