@@ -4,7 +4,7 @@
 use sourcemap::SourceMap;
 
 use crate::{Loader, Wasm};
-use std::{panic, path::Path};
+use std::{fs::File, io::Write, panic, path::Path};
 
 /// Tests the format of the sourcemap, makes sure the JSON is valid and
 /// the required keys are present, with the right type of values.
@@ -156,6 +156,11 @@ fn can_bundle_source() {
                 .expect("Could not load WASM sections from test build output")
                 .build(true, None)
                 .expect("Failed to build sourcemap from test build output");
+
+            File::create("test.json")
+                .unwrap()
+                .write_all(sourcemap.as_bytes())
+                .unwrap();
 
             assert!(sourcemap.contains("fn main() {}"));
         } else {
